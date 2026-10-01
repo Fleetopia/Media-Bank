@@ -39,20 +39,20 @@ WEEKLY_REPORT_DAY = int(os.getenv("WEEKLY_REPORT_DAY", "0"))  # Monday = 0
 WEEKLY_REPORT_HOUR = int(os.getenv("WEEKLY_REPORT_HOUR", "21"))
 WEEKLY_REPORT_MINUTE = int(os.getenv("WEEKLY_REPORT_MINUTE", "5"))
 
-# Premium/custom emoji support:
-# Put Telegram custom emoji IDs in .env. If left blank, normal emoji are used.
-# Example:
-# EMOJI_NEW=5368324170671202286
-# EMOJI_OK=5368324170671202287
+# Premium/custom emoji support.
+# Confirmed Telegram custom emoji IDs supplied by the user.
+# Environment variables can override these defaults if needed.
 CUSTOM_EMOJI = {
-    "new": os.getenv("EMOJI_NEW", "").strip(),
-    "ok": os.getenv("EMOJI_OK", "").strip(),
-    "work": os.getenv("EMOJI_WORK", "").strip(),
-    "money": os.getenv("EMOJI_MONEY", "").strip(),
-    "chart": os.getenv("EMOJI_CHART", "").strip(),
-    "user": os.getenv("EMOJI_USER", "").strip(),
-    "building": os.getenv("EMOJI_BUILDING", "").strip(),
-    "card": os.getenv("EMOJI_CARD", "").strip(),
+    "new": os.getenv("EMOJI_NEW", "5382357040008021292").strip(),
+    "card": os.getenv("EMOJI_CARD", "5445353829304387411").strip(),
+    "money": os.getenv("EMOJI_MONEY", "5287231198098117669").strip(),
+    "building": os.getenv("EMOJI_BUILDING", "5278702045883292456").strip(),
+    "user": os.getenv("EMOJI_USER", "5190498849440931467").strip(),
+    "manager": os.getenv("EMOJI_MANAGER", "5373012449597335010").strip(),
+    "chart": os.getenv("EMOJI_CHART", "5231200819986047254").strip(),
+    "report": os.getenv("EMOJI_REPORT", "5244837092042750681").strip(),
+    "ok": os.getenv("EMOJI_OK", "5206607081334906820").strip(),
+    "work": os.getenv("EMOJI_WORK", "5386367538735104399").strip(),
 }
 
 logging.basicConfig(
@@ -65,39 +65,6 @@ PRODUCTS = {
     "debit": ("💳 Дебетовая карта", "Подберём подходящую дебетовую карту и передадим заявку специалисту."),
     "credit": ("💰 Кредитная карта", "Поможем подобрать кредитную карту и передадим заявку специалисту."),
     "rko": ("🏢 Регистрация бизнеса + РКО", "Поможем оформить заявку на регистрацию бизнеса и РКО."),
-}
-
-# Banks/offers used by Media Bank, grouped by the service shown in the
-# user's offer lists. The names intentionally preserve the source wording.
-BANKS_BY_PRODUCT = {
-    "debit": [
-        ("tbank", "Т-Банк"),
-        ("alfa", "Альфа-Банк"),
-        ("vtb", "ВТБ-Банк"),
-        ("psb", "Промсвязьбанк"),
-        ("akbars", "Ак Барс Банк"),
-        ("otp", "ОТП банк"),
-    ],
-    "credit": [
-        ("tbank", "Т-Банк"),
-        ("vtb", "ВТБ"),
-        ("uralsib", "Уралсиб"),
-        ("otp", "ОТП-Банк"),
-        ("yandex_split", "Яндекс - Кредитная карта супер Сплит"),
-        ("alfa", "Альфа-Банк"),
-    ],
-    "rko": [
-        ("alfa", "Альфа-Банк"),
-        ("psb", "Промсвязьбанк"),
-        ("spb", "РКО от Санкт-Петербург Банка"),
-        ("ubrir", "УБРиР Банк"),
-    ],
-}
-
-ALL_BANK_NAMES = {
-    key: name
-    for items in BANKS_BY_PRODUCT.values()
-    for key, name in items
 }
 
 
@@ -143,10 +110,6 @@ def init_db():
             created_at TEXT NOT NULL
         )
         """)
-        # Safe migration for existing databases created before bank tracking.
-        columns = {row[1] for row in c.execute("PRAGMA table_info(applications)").fetchall()}
-        if "bank" not in columns:
-            c.execute("ALTER TABLE applications ADD COLUMN bank TEXT DEFAULT 'Другой / не указан'")
 
 
 def is_admin(uid):
@@ -184,19 +147,9 @@ def main_kb(uid):
     return mk(rows)
 
 
-def bank_kb(product_key=None, back="main"):
-    rows = []
-    items = BANKS_BY_PRODUCT.get(product_key, [])
-    for key, name in items:
-        rows.append([InlineKeyboardButton(f"🏦 {name}", callback_data=f"bank:{key}")])
-    rows.append([InlineKeyboardButton("◀️ Назад", callback_data=back)])
-    return mk(rows)
-
-
 def product_kb():
     return mk([
         [InlineKeyboardButton("📝 Оставить заявку", callback_data="start_form")],
-        [InlineKeyboardButton("🏦 Выбрать банк", callback_data="choose_bank")],
         [InlineKeyboardButton("◀️ Назад", callback_data="main")]
     ])
 
@@ -204,11 +157,9 @@ def product_kb():
 def manager_kb():
     return mk([
         [InlineKeyboardButton("🗂 Мои заявки", callback_data="my_apps")],
-        [InlineKeyboardButton("📊 Моя статистика", callback_data="my_stats")],
-        [InlineKeyboardButton("📈 Мой отчёт", callback_data="my_report")],
         [InlineKeyboardButton("📋 Все заявки", callback_data="all_apps")],
+        [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
         [InlineKeyboardButton("📈 Отчёт за сегодня", callback_data="today_report")],
-        [InlineKeyboardButton("👤 Мой профиль", callback_data="my_profile")],
         [InlineKeyboardButton("◀️ В меню", callback_data="main")]
     ])
 
@@ -217,29 +168,10 @@ def admin_kb():
     return mk([
         [InlineKeyboardButton("📋 Все заявки", callback_data="all_apps")],
         [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
-        [InlineKeyboardButton("🏦 Банки", callback_data="bank_stats")],
         [InlineKeyboardButton("📈 Отчёт за сегодня", callback_data="today_report")],
         [InlineKeyboardButton("👥 Менеджеры", callback_data="managers")],
         [InlineKeyboardButton("📤 Экспорт CSV", callback_data="export")],
         [InlineKeyboardButton("◀️ В меню", callback_data="main")]
-    ])
-
-
-def apps_filter_kb(back):
-    return mk([
-        [InlineKeyboardButton("📋 Все", callback_data="apps:all"),
-         InlineKeyboardButton("🆕 Новые", callback_data="apps:new")],
-        [InlineKeyboardButton("🔄 В работе", callback_data="apps:in_work"),
-         InlineKeyboardButton("✅ Завершённые", callback_data="apps:completed")],
-        [InlineKeyboardButton("◀️ Назад", callback_data=back)]
-    ])
-
-
-def manager_profile_kb():
-    return mk([
-        [InlineKeyboardButton("🗂 Мои заявки", callback_data="my_apps")],
-        [InlineKeyboardButton("📊 Моя статистика", callback_data="my_stats")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="manager")]
     ])
 
 
@@ -347,7 +279,6 @@ async def create_application(q, context):
     uid = q.from_user.id
     name = context.user_data.get("name", "").strip()
     product = context.user_data.get("product", "Не указано")
-    bank = context.user_data.get("bank", "Другой / не указан")
     manager_id = context.user_data.get("manager_id")
     manager_name = MANAGERS.get(manager_id, "")
     username = q.from_user.username or ""
@@ -356,10 +287,10 @@ async def create_application(q, context):
     with db() as c:
         cur = c.execute("""
         INSERT INTO applications
-        (user_id,username,name,product,bank,manager_id,manager_name,status,created_at)
-        VALUES(?,?,?,?,?,?,?,?,?)
+        (user_id,username,name,product,manager_id,manager_name,status,created_at)
+        VALUES(?,?,?,?,?,?,?,?)
         """, (
-            uid, username, name, product, bank, manager_id,
+            uid, username, name, product, manager_id,
             manager_name, "new", now
         ))
         app_id = cur.lastrowid
@@ -373,8 +304,7 @@ async def create_application(q, context):
         f"{user_icon} Имя: <b>{escape(name)}</b>\n"
         f"📱 Telegram: @{escape(username) if username else 'нет username'}\n"
         f"{card_icon} Услуга: <b>{escape(product)}</b>\n"
-        f"🏦 Банк: <b>{escape(bank)}</b>\n"
-        f"👨‍💼 Менеджер: <b>{escape(manager_name)}</b>\n"
+        f"{custom_emoji('manager', '👨‍💼')} Менеджер: <b>{escape(manager_name)}</b>\n"
         f"🕐 {now}"
     )
     try:
@@ -423,96 +353,15 @@ def report_data(period_start=None, period_end=None):
                 GROUP BY product ORDER BY COUNT(*) DESC""", args
         ).fetchall()
 
-        bank_rows = c.execute(
-            f"""SELECT COALESCE(bank,'Другой / не указан'),
-                       COUNT(*),
-                       SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END)
-                FROM applications{where}
-                GROUP BY COALESCE(bank,'Другой / не указан')
-                ORDER BY COUNT(*) DESC""", args
-        ).fetchall()
+    return total, new, work, done, manager_rows, product_rows
 
-        product_bank_rows = c.execute(
-            f"""SELECT COALESCE(bank,'Другой / не указан'), product,
-                       COUNT(*),
-                       SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END)
-                FROM applications{where}
-                GROUP BY COALESCE(bank,'Другой / не указан'), product
-                ORDER BY COUNT(*) DESC""", args
-        ).fetchall()
-
-    return total, new, work, done, manager_rows, product_rows, bank_rows, product_bank_rows
-
-
-
-def manager_report_data(manager_id, period_start=None, period_end=None):
-    clauses = ["manager_id=?"]
-    args = [manager_id]
-    if period_start:
-        clauses.append("created_at >= ?")
-        args.append(period_start)
-    if period_end:
-        clauses.append("created_at < ?")
-        args.append(period_end)
-    where = " WHERE " + " AND ".join(clauses)
-    with db() as c:
-        total = c.execute(f"SELECT COUNT(*) FROM applications{where}", args).fetchone()[0]
-        new = c.execute(f"SELECT COUNT(*) FROM applications{where} AND status='new'", args).fetchone()[0]
-        work = c.execute(f"SELECT COUNT(*) FROM applications{where} AND status='in_work'", args).fetchone()[0]
-        done = c.execute(f"SELECT COUNT(*) FROM applications{where} AND status='completed'", args).fetchone()[0]
-        products = c.execute(
-            f"""SELECT product, COUNT(*),
-                       SUM(CASE WHEN status='new' THEN 1 ELSE 0 END),
-                       SUM(CASE WHEN status='in_work' THEN 1 ELSE 0 END),
-                       SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END)
-                FROM applications{where}
-                GROUP BY product ORDER BY COUNT(*) DESC""", args
-        ).fetchall()
-        product_banks = c.execute(
-            f"""SELECT product, COALESCE(bank,'Другой / не указан'), COUNT(*),
-                       SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END)
-                FROM applications{where}
-                GROUP BY product, COALESCE(bank,'Другой / не указан')
-                ORDER BY product, COUNT(*) DESC""", args
-        ).fetchall()
-    return total, new, work, done, products, product_banks
-
-
-def format_manager_report(manager_id, title, start=None, end=None):
-    name = MANAGERS.get(manager_id, "Не назначен")
-    total, new, work, done, products, product_banks = manager_report_data(manager_id, start, end)
-    conversion = done / total * 100 if total else 0
-    text = (
-        f"👤 <b>{escape(title)}</b> — <b>{escape(name)}</b>\n\n"
-        f"📥 Всего: <b>{total}</b>\n"
-        f"🆕 Новых: <b>{new}</b>\n"
-        f"🔄 В работе: <b>{work}</b>\n"
-        f"✅ Завершено: <b>{done}</b>\n"
-        f"📊 Конверсия: <b>{conversion:.1f}%</b>\n"
-    )
-    if products:
-        text += "\n<b>По продуктам:</b>\n"
-        for product, count, n, w, d in products:
-            text += (
-                f"• <b>{escape(product)}</b> — {count} всего | "
-                f"🆕 {n or 0} | 🔄 {w or 0} | ✅ {d or 0}\n"
-            )
-    if product_banks:
-        text += "\n<b>Банк → продукт:</b>\n"
-        current_product = None
-        for product, bank, count, completed in product_banks:
-            if product != current_product:
-                text += f"\n<b>{escape(product)}</b>\n"
-                current_product = product
-            text += f"  • 🏦 {escape(bank)} — <b>{count}</b> заявок / <b>{completed or 0}</b> завершено\n"
-    return text
 
 def format_report(title, start=None, end=None):
-    total, new, work, done, managers, products, banks, product_banks = report_data(start, end)
+    total, new, work, done, managers, products = report_data(start, end)
     conversion = done / total * 100 if total else 0
 
     text = (
-        f"📈 <b>{escape(title)}</b>\n\n"
+        f"{custom_emoji('report', '📈')} <b>{escape(title)}</b>\n\n"
         f"📥 Всего заявок: <b>{total}</b>\n"
         f"🆕 Новых: <b>{new}</b>\n"
         f"🔄 В работе: <b>{work}</b>\n"
@@ -525,28 +374,10 @@ def format_report(title, start=None, end=None):
         for product, count in products:
             text += f"• {escape(product)} — <b>{count}</b>\n"
 
-    if banks:
-        text += "\n<b>🏦 По банкам:</b>\n"
-        for bank, count, completed in banks:
-            text += f"• {escape(bank)} — <b>{count}</b> заявок / <b>{completed or 0}</b> завершено\n"
-
-    if product_banks:
-        text += "\n<b>🏦 Банк → продукт:</b>\n"
-        current_bank = None
-        for bank, product, count, completed in product_banks:
-            if bank != current_bank:
-                text += f"\n<b>{escape(bank)}</b>\n"
-                current_bank = bank
-            text += f"  • {escape(product)} — <b>{count}</b> / <b>{completed or 0}</b> завершено\n"
-
     if managers:
         text += "\n<b>По менеджерам:</b>\n"
         for manager_name, count in managers:
             text += f"• {escape(manager_name or 'Не назначен')} — <b>{count}</b>\n"
-
-    for manager_id in MANAGERS:
-        text += "\n━━━━━━━━━━━━━━━━━━\n"
-        text += format_manager_report(manager_id, "Менеджер", start, end)
 
     return text
 
@@ -561,16 +392,6 @@ async def send_daily_report(app, manual=False):
     )
     try:
         await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
-        for manager_id in MANAGERS:
-            try:
-                manager_text = format_manager_report(
-                    manager_id, f"Автоотчёт менеджера за {now:%d.%m.%Y}",
-                    start.isoformat(timespec="seconds"),
-                    (start + timedelta(days=1)).isoformat(timespec="seconds")
-                )
-                await app.bot.send_message(manager_id, manager_text, parse_mode=ParseMode.HTML)
-            except TelegramError:
-                log.exception("Daily manager report failed for %s", manager_id)
         with db() as c:
             c.execute(
                 "INSERT INTO report_log(kind,created_at) VALUES(?,?)",
@@ -592,16 +413,6 @@ async def send_weekly_report(app):
     )
     try:
         await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
-        for manager_id in MANAGERS:
-            try:
-                manager_text = format_manager_report(
-                    manager_id, f"Автоотчёт менеджера за неделю {monday:%d.%m}–{now:%d.%m.%Y}",
-                    monday.isoformat(timespec="seconds"),
-                    (now + timedelta(days=1)).isoformat(timespec="seconds")
-                )
-                await app.bot.send_message(manager_id, manager_text, parse_mode=ParseMode.HTML)
-            except TelegramError:
-                log.exception("Weekly manager report failed for %s", manager_id)
         with db() as c:
             c.execute(
                 "INSERT INTO report_log(kind,created_at) VALUES(?,?)",
@@ -638,7 +449,7 @@ async def list_apps(q, mine=False):
         return
 
     sql = """
-    SELECT id,name,product,bank,manager_name,status
+    SELECT id,name,product,manager_name,status
     FROM applications
     """
     args = []
@@ -660,14 +471,14 @@ async def list_apps(q, mine=False):
         )
         return
 
-    symbols = {"new": "🆕", "in_work": "🔄", "completed": "✅"}
+    symbols = {"new": custom_emoji("new", "🆕"), "in_work": custom_emoji("work", "🔄"), "completed": custom_emoji("ok", "✅")}
     text = "📋 <b>Заявки</b>\n\n"
     buttons = []
 
-    for aid, name, product, bank, manager_name, status in rows:
+    for aid, name, product, manager_name, status in rows:
         text += (
             f"{symbols.get(status, '•')} <b>#{aid}</b> — "
-            f"{escape(name)} — {escape(product)} — 🏦 {escape(bank or 'Другой / не указан')}\n"
+            f"{escape(name)} — {escape(product)}\n"
         )
         buttons.append([
             InlineKeyboardButton(
@@ -692,7 +503,7 @@ async def view_app(q, app_id):
 
     with db() as c:
         row = c.execute("""
-        SELECT id,user_id,username,name,product,bank,manager_name,status,
+        SELECT id,user_id,username,name,product,manager_name,status,
                created_at,taken_at,completed_at
         FROM applications WHERE id=?
         """, (app_id,)).fetchone()
@@ -701,11 +512,11 @@ async def view_app(q, app_id):
         await q.answer("Заявка не найдена.", show_alert=True)
         return
 
-    aid, uid, username, name, product, bank, manager_name, status, created, taken, completed = row
+    aid, uid, username, name, product, manager_name, status, created, taken, completed = row
     status_text = {
-        "new": "🆕 Новая",
-        "in_work": "🔄 В работе",
-        "completed": "✅ Завершена"
+        "new": f"{custom_emoji('new', '🆕')} Новая",
+        "in_work": f"{custom_emoji('work', '🔄')} В работе",
+        "completed": f"{custom_emoji('ok', '✅')} Завершена"
     }.get(status, status)
 
     text = (
@@ -713,8 +524,7 @@ async def view_app(q, app_id):
         f"👤 Имя: {escape(name)}\n"
         f"📱 Telegram: @{escape(username) if username else 'нет'}\n"
         f"🛍 Услуга: {escape(product)}\n"
-        f"🏦 Банк: {escape(bank or 'Другой / не указан')}\n"
-        f"👨‍💼 Менеджер: {escape(manager_name or 'не назначен')}\n"
+        f"{custom_emoji('manager', '👨‍💼')} Менеджер: {escape(manager_name or 'не назначен')}\n"
         f"📌 Статус: {status_text}\n"
         f"🕐 Создана: {created}"
     )
@@ -734,7 +544,7 @@ async def export_csv(update, context):
     path = "applications_export.csv"
     with db() as c:
         rows = c.execute("""
-        SELECT id,user_id,username,name,product,bank,manager_name,status,
+        SELECT id,user_id,username,name,product,manager_name,status,
                created_at,taken_at,completed_at
         FROM applications ORDER BY id DESC
         """).fetchall()
@@ -743,7 +553,7 @@ async def export_csv(update, context):
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow([
-            "id","user_id","username","name","product","bank","manager",
+            "id","user_id","username","name","product","manager",
             "status","created_at","taken_at","completed_at"
         ])
         w.writerows(rows)
@@ -773,55 +583,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         key = d.split(":", 1)[1]
         title, description = PRODUCTS[key]
         context.user_data["product"] = title
-        context.user_data["product_key"] = key
-        context.user_data.pop("bank", None)
         await safe_edit(
             q,
-            f"✨ <b>{escape(title)}</b>\n\n{escape(description)}\n\n🏦 <b>Выберите банк:</b>",
-            bank_kb(key, "main")
+            f"✨ <b>{escape(title)}</b>\n\n{escape(description)}",
+            product_kb()
         )
 
-    elif d == "choose_bank":
-        product_key = context.user_data.get("product_key")
-        await safe_edit(q, "🏦 <b>Выберите банк</b>", bank_kb(product_key, "main"))
-
-    elif d.startswith("bank:"):
-        key = d.split(":", 1)[1]
-        product_key = context.user_data.get("product_key")
-        allowed = dict(BANKS_BY_PRODUCT.get(product_key, []))
-        if key not in allowed:
-            await q.answer("Этот банк недоступен для выбранного продукта.", show_alert=True)
-            return
-        context.user_data["bank"] = allowed[key]
-        if context.user_data.get("product"):
-            await safe_edit(
-                q,
-                f"🏦 Банк: <b>{escape(context.user_data['bank'])}</b>\n\n📝 Теперь оставьте заявку.",
-                mk([
-                    [InlineKeyboardButton("📝 Продолжить заявку", callback_data="start_form")],
-                    [InlineKeyboardButton("🏦 Сменить банк", callback_data="choose_bank")],
-                    [InlineKeyboardButton("◀️ В меню", callback_data="main")]
-                ])
-            )
-        else:
-            await safe_edit(
-                q,
-                f"🏦 Банк: <b>{escape(context.user_data['bank'])}</b>\n\nСначала выберите услугу.",
-                mk([[InlineKeyboardButton("◀️ В меню", callback_data="main")]])
-            )
-
     elif d == "start_form":
-        if not context.user_data.get("product") or context.user_data.get("product") == "Не указано":
-            await safe_edit(q, "📝 <b>Заявка</b>\n\nСначала выберите услугу:", mk([
-                [InlineKeyboardButton("💳 Дебетовая карта", callback_data="product:debit")],
-                [InlineKeyboardButton("💰 Кредитная карта", callback_data="product:credit")],
-                [InlineKeyboardButton("🏢 Регистрация бизнеса + РКО", callback_data="product:rko")],
-                [InlineKeyboardButton("◀️ В меню", callback_data="main")]
-            ]))
-            return
-        if not context.user_data.get("bank"):
-            await safe_edit(q, "🏦 <b>Выберите банк</b>", bank_kb(context.user_data.get("product_key"), "main"))
-            return
+        context.user_data.setdefault("product", "Не указано")
         await ask_name(q, context)
 
     elif d.startswith("manager:"):
@@ -829,7 +598,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["manager_id"] = mid
         name = escape(context.user_data.get("name", ""))
         product = escape(context.user_data.get("product", ""))
-        bank = escape(context.user_data.get("bank", "Другой / не указан"))
         username = q.from_user.username or ""
         await safe_edit(
             q,
@@ -837,7 +605,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👤 Имя: {name}\n"
             f"📱 Telegram: @{escape(username) if username else 'нет'}\n"
             f"🛍 Услуга: {product}\n"
-            f"🏦 Банк: {bank}\n"
             f"👨‍💼 Менеджер: {escape(MANAGERS[mid])}\n\n"
             "Всё верно?",
             mk([
@@ -862,53 +629,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(q, "⚙️ <b>Админ-панель</b>\n\nВыберите раздел:", admin_kb())
 
     elif d == "all_apps":
-        if not is_manager(uid) and not is_admin(uid):
-            await q.answer("⛔ Доступ запрещён.", show_alert=True); return
-        back = "admin" if is_admin(uid) else "manager"
-        await safe_edit(q, "📋 <b>Фильтр заявок</b>\n\nВыберите статус:", apps_filter_kb(back))
-
-    elif d.startswith("apps:"):
-        if not is_manager(uid) and not is_admin(uid):
-            await q.answer("⛔ Доступ запрещён.", show_alert=True); return
-        status=d.split(":",1)[1]
-        if status == "all":
-            await list_apps(q)
-        else:
-            # Same list UI, filtered by status.
-            sql="SELECT id,name,product,bank,manager_name,status FROM applications WHERE status=? ORDER BY id DESC LIMIT 50"
-            with db() as c: rows=c.execute(sql,(status,)).fetchall()
-            if not rows:
-                await safe_edit(q,"📋 <b>Заявок нет.</b>",mk([[InlineKeyboardButton("◀️ Назад",callback_data="admin" if is_admin(uid) else "manager")]])); return
-            symbols={"new":"🆕","in_work":"🔄","completed":"✅"}
-            text="📋 <b>Заявки</b>\n\n"; buttons=[]
-            for aid,name,product,bank,mgr,st in rows:
-                text += f"{symbols.get(st,'•')} <b>#{aid}</b> — {escape(name)} — {escape(product)} — 🏦 {escape(bank or 'Другой / не указан')}\n"
-                buttons.append([InlineKeyboardButton(f"🔎 Открыть #{aid}",callback_data=f"view:{aid}")])
-            buttons.append([InlineKeyboardButton("◀️ Назад",callback_data="admin" if is_admin(uid) else "manager")])
-            await safe_edit(q,text,mk(buttons))
+        await list_apps(q)
 
     elif d == "my_apps":
         await list_apps(q, True)
 
-    elif d == "my_stats":
-        await show_manager_stats(q)
-
-    elif d == "my_report":
-        if not is_manager(uid):
-            await q.answer("⛔ Доступ запрещён.", show_alert=True); return
-        now = datetime.now()
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        text = format_manager_report(uid, f"Отчёт за {now:%d.%m.%Y}", start.isoformat(timespec="seconds"), (start + timedelta(days=1)).isoformat(timespec="seconds"))
-        await safe_edit(q, text, mk([[InlineKeyboardButton("◀️ Назад", callback_data="manager")]]))
-
-    elif d == "my_profile":
-        await show_manager_profile(q)
-
     elif d == "stats":
         await show_stats(q)
-
-    elif d == "bank_stats":
-        await show_bank_stats(q)
 
     elif d == "today_report":
         now = datetime.now()
@@ -937,32 +664,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     (mid,)
                 ).fetchone()[0]
             text += f"👨‍💼 {escape(name)} — заявок: <b>{count}</b>\n"
-        buttons=[]
-        for mid,name in MANAGERS.items():
-            buttons.append([InlineKeyboardButton(f"📊 {name}", callback_data=f"manager_stats:{mid}"), InlineKeyboardButton("📈 Отчёт", callback_data=f"manager_today:{mid}")])
-        buttons.append([InlineKeyboardButton("◀️ Назад", callback_data="admin")])
-        await safe_edit(q, text, mk(buttons))
-
-    elif d.startswith("manager_stats:"):
-        if not is_admin(uid):
-            await q.answer("⛔ Доступ запрещён.", show_alert=True); return
-        await show_manager_stats(q, int(d.split(":",1)[1]))
-
-    elif d.startswith("manager_today:"):
-        target = int(d.split(":",1)[1])
-        if not is_admin(uid) and target != uid:
-            await q.answer("⛔ Доступ запрещён.", show_alert=True); return
-        now = datetime.now(); start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        text = format_manager_report(target, f"Отчёт за {now:%d.%m.%Y}", start.isoformat(timespec="seconds"), (start + timedelta(days=1)).isoformat(timespec="seconds"))
-        await safe_edit(q, text, mk([[InlineKeyboardButton("◀️ Назад", callback_data=f"manager_stats:{target}" if is_admin(uid) else "manager")]]))
-
-    elif d.startswith("manager_week:"):
-        target = int(d.split(":",1)[1])
-        if not is_admin(uid) and target != uid:
-            await q.answer("⛔ Доступ запрещён.", show_alert=True); return
-        now = datetime.now(); monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-        text = format_manager_report(target, f"Отчёт за неделю {monday:%d.%m}–{now:%d.%m.%Y}", monday.isoformat(timespec="seconds"), (now + timedelta(days=1)).isoformat(timespec="seconds"))
-        await safe_edit(q, text, mk([[InlineKeyboardButton("◀️ Назад", callback_data=f"manager_stats:{target}" if is_admin(uid) else "manager")]]))
+        await safe_edit(q, text, mk([[InlineKeyboardButton("◀️ Назад", callback_data="admin")]]))
 
     elif d == "export":
         if is_admin(uid):
@@ -971,13 +673,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             import csv
             with db() as c:
                 rows = c.execute("""
-                SELECT id,user_id,username,name,product,bank,manager_name,status,
+                SELECT id,user_id,username,name,product,manager_name,status,
                        created_at,taken_at,completed_at
                 FROM applications ORDER BY id DESC
                 """).fetchall()
             with open(path, "w", newline="", encoding="utf-8-sig") as f:
                 w = csv.writer(f)
-                w.writerow(["id","user_id","username","name","product","bank","manager","status","created_at","taken_at","completed_at"])
+                w.writerow(["id","user_id","username","name","product","manager","status","created_at","taken_at","completed_at"])
                 w.writerows(rows)
             with open(path, "rb") as f:
                 await q.message.reply_document(InputFile(f, filename="media_bank_applications.csv"), caption="📤 Экспорт заявок")
@@ -995,17 +697,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         aid = int(d.split(":")[1])
         now = datetime.now().isoformat(timespec="seconds")
         with db() as c:
-            row=c.execute("SELECT user_id FROM applications WHERE id=? AND status='new'",(aid,)).fetchone()
             c.execute("""
             UPDATE applications
             SET status='in_work', manager_id=?, manager_name=?, taken_at=?
             WHERE id=? AND status='new'
             """, (uid, MANAGERS.get(uid, "Администратор"), now, aid))
-        if row:
-            try:
-                await context.bot.send_message(row[0], f"🔄 <b>Заявка #{aid} принята в работу</b>\n\nМенеджер уже начал обработку вашей заявки.", parse_mode=ParseMode.HTML)
-            except TelegramError:
-                pass
         await view_app(q, aid)
 
     elif d.startswith("complete:"):
@@ -1014,80 +710,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         aid = int(d.split(":")[1])
         now = datetime.now().isoformat(timespec="seconds")
         with db() as c:
-            row=c.execute("SELECT user_id FROM applications WHERE id=? AND status='in_work'",(aid,)).fetchone()
             c.execute("""
             UPDATE applications SET status='completed', completed_at=?
             WHERE id=? AND status='in_work'
             """, (now, aid))
-        if row:
-            try:
-                await context.bot.send_message(row[0], f"✅ <b>Заявка #{aid} завершена</b>\n\nСпасибо за обращение в Media Bank.", parse_mode=ParseMode.HTML)
-            except TelegramError:
-                pass
         await view_app(q, aid)
-
-
-async def show_manager_stats(q, manager_id=None):
-    uid = q.from_user.id
-    if not is_manager(uid) and not is_admin(uid):
-        await q.answer("⛔ Доступ запрещён.", show_alert=True)
-        return
-    target = manager_id or uid
-    title = "Моя статистика" if target == uid else "Статистика менеджера"
-    text = format_manager_report(target, title)
-    back = 'admin' if is_admin(uid) else 'manager'
-    await safe_edit(q, text, mk([
-        [InlineKeyboardButton("📈 Отчёт за сегодня", callback_data=f"manager_today:{target}")],
-        [InlineKeyboardButton("📅 Отчёт за неделю", callback_data=f"manager_week:{target}")],
-        [InlineKeyboardButton("◀️ Назад", callback_data=back)]
-    ]))
-
-
-async def show_manager_profile(q):
-    uid = q.from_user.id
-    if not is_manager(uid):
-        await q.answer("⛔ Доступ запрещён.", show_alert=True)
-        return
-    name = MANAGERS.get(uid, "Менеджер")
-    username = q.from_user.username
-    text = (
-        f"👤 <b>Профиль менеджера</b>\n\n"
-        f"Имя: <b>{escape(name)}</b>\n"
-        f"Telegram: @{escape(username) if username else 'нет username'}\n\n"
-        + format_manager_report(uid, "Текущая статистика")
-    )
-    await safe_edit(q, text, manager_profile_kb())
-
-
-async def show_bank_stats(q):
-    if not is_admin(q.from_user.id):
-        await q.answer("⛔ Доступ только администратору.", show_alert=True)
-        return
-    with db() as c:
-        rows = c.execute("""
-            SELECT COALESCE(bank,'Другой / не указан'),
-                   product,
-                   COUNT(*),
-                   SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END),
-                   SUM(CASE WHEN status='new' THEN 1 ELSE 0 END),
-                   SUM(CASE WHEN status='in_work' THEN 1 ELSE 0 END)
-            FROM applications
-            GROUP BY COALESCE(bank,'Другой / не указан'), product
-            ORDER BY COALESCE(bank,'Другой / не указан'), COUNT(*) DESC
-        """).fetchall()
-    if not rows:
-        text="🏦 <b>Банки</b>\n\nЗаявок пока нет."
-    else:
-        text="🏦 <b>Статистика по банкам</b>\n\n"
-        current=None
-        for bank,product,total,done,new,work in rows:
-            if bank != current:
-                if current is not None:
-                    text += "\n"
-                current=bank
-                text += f"<b>🏦 {escape(bank)}</b>\n"
-            text += f"  • {escape(product)} — <b>{total}</b> всего | 🆕 {new or 0} | 🔄 {work or 0} | ✅ <b>{done or 0}</b>\n"
-    await safe_edit(q,text,mk([[InlineKeyboardButton("◀️ Назад",callback_data="admin")]]))
 
 
 async def show_stats(q):
@@ -1096,23 +723,20 @@ async def show_stats(q):
         new = c.execute("SELECT COUNT(*) FROM applications WHERE status='new'").fetchone()[0]
         work = c.execute("SELECT COUNT(*) FROM applications WHERE status='in_work'").fetchone()[0]
         done = c.execute("SELECT COUNT(*) FROM applications WHERE status='completed'").fetchone()[0]
-        products = c.execute("SELECT product,COUNT(*) FROM applications GROUP BY product ORDER BY COUNT(*) DESC").fetchall()
-        managers = c.execute("SELECT COALESCE(manager_name,'Не назначен'),COUNT(*) FROM applications GROUP BY manager_name ORDER BY COUNT(*) DESC").fetchall()
-        banks = c.execute("""SELECT COALESCE(bank,'Другой / не указан'), COUNT(*),
-                                  SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END)
-                           FROM applications GROUP BY COALESCE(bank,'Другой / не указан') ORDER BY COUNT(*) DESC""").fetchall()
     conversion = done / total * 100 if total else 0
-    text=(f"📊 <b>Статистика</b>\n\nВсего заявок: <b>{total}</b>\n🆕 Новых: <b>{new}</b>\n🔄 В работе: <b>{work}</b>\n✅ Завершённых: <b>{done}</b>\n📈 Конверсия: <b>{conversion:.1f}%</b>")
-    if products:
-        text += "\n\n<b>По услугам:</b>\n" + "".join(f"• {escape(p)} — <b>{n}</b>\n" for p,n in products)
-    if banks:
-        text += "\n<b>🏦 По банкам:</b>\n" + "".join(f"• {escape(b)} — <b>{n}</b> заявок / <b>{d or 0}</b> завершено\n" for b,n,d in banks)
-    if managers:
-        text += "\n<b>По менеджерам:</b>\n" + "".join(f"• {escape(m)} — <b>{n}</b>\n" for m,n in managers)
-    await safe_edit(q,text,mk([
-        [InlineKeyboardButton("🏦 Детально по банкам",callback_data="bank_stats")],
-        [InlineKeyboardButton("◀️ Назад",callback_data="admin" if is_admin(q.from_user.id) else "manager")]
-    ]))
+    await safe_edit(
+        q,
+        f"{custom_emoji('chart', '📊')} <b>Статистика</b>\n\n"
+        f"Всего заявок: <b>{total}</b>\n"
+        f"🆕 Новых: <b>{new}</b>\n"
+        f"🔄 В работе: <b>{work}</b>\n"
+        f"✅ Завершённых: <b>{done}</b>\n"
+        f"📈 Конверсия: <b>{conversion:.1f}%</b>",
+        mk([[InlineKeyboardButton(
+            "◀️ Назад",
+            callback_data="admin" if is_admin(q.from_user.id) else "manager"
+        )]])
+    )
 
 
 async def report_cmd(update, context):
@@ -1121,20 +745,14 @@ async def report_cmd(update, context):
         return
     now = datetime.now()
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if is_manager(update.effective_user.id) and not is_admin(update.effective_user.id):
-        text = format_manager_report(
-            update.effective_user.id,
+    await update.message.reply_text(
+        format_report(
             f"Отчёт за {now:%d.%m.%Y}",
             start.isoformat(timespec="seconds"),
             (start + timedelta(days=1)).isoformat(timespec="seconds")
-        )
-    else:
-        text = format_report(
-            f"Отчёт за {now:%d.%m.%Y}",
-            start.isoformat(timespec="seconds"),
-            (start + timedelta(days=1)).isoformat(timespec="seconds")
-        )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        ),
+        parse_mode=ParseMode.HTML
+    )
 
 
 async def scheduled_reports(context):
