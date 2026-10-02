@@ -5,6 +5,7 @@ import io
 import html
 import sqlite3
 import logging
+import re
 from datetime import datetime, timedelta
 from functools import wraps
 
