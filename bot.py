@@ -24,6 +24,7 @@ GROUP_ID = int(os.getenv("GROUP_ID", "-1004381547715"))
 REPORT_CHAT_ID = int(os.getenv("REPORT_CHAT_ID", str(GROUP_ID)))
 PROXY = os.getenv("PROXY", "").strip()
 DB_FILE = "media_bank.db"
+BOT_VERSION = "PREMIUM-BUTTONS-2026-10-02"
 
 # Manager IDs used in the project.
 MANAGERS = {
@@ -62,9 +63,9 @@ logging.basicConfig(
 log = logging.getLogger("media_bank")
 
 PRODUCTS = {
-    "debit": ("💳 Дебетовая карта", "Подберём подходящую дебетовую карту и передадим заявку специалисту."),
-    "credit": ("💰 Кредитная карта", "Поможем подобрать кредитную карту и передадим заявку специалисту."),
-    "rko": ("🏢 Регистрация бизнеса + РКО", "Поможем оформить заявку на регистрацию бизнеса и РКО."),
+    "debit": ("Дебетовая карта", "Подберём подходящую дебетовую карту и передадим заявку специалисту."),
+    "credit": ("Кредитная карта", "Поможем подобрать кредитную карту и передадим заявку специалисту."),
+    "rko": ("Регистрация бизнеса + РКО", "Поможем оформить заявку на регистрацию бизнеса и РКО."),
 }
 
 
@@ -120,8 +121,65 @@ def is_manager(uid):
     return uid in MANAGERS
 
 
+# Custom/Premium emoji IDs supplied for the Media Bank interface.
+# Telegram supports these directly on keyboard buttons via icon_custom_emoji_id.
+PREMIUM_BUTTON_EMOJI = {
+    "debit": "5445353829304387411",
+    "credit": "5287231198098117669",
+    "rko": "5278702045883292456",
+    "form": "5210952531676504517",
+    "back": "5197269100878907942",
+    "cancel": "5253742260054409879",
+    "send": "5206607081334906820",
+    "edit": "5210952531676504517",
+    "manager": "5373012449597335010",
+    "user": "5190498849440931467",
+    "apps": "5447410659077661506",
+    "stats": "5231200819986047254",
+    "report": "5244837092042750681",
+    "refresh": "5197269100878907942",
+    "admin": "5217822164362739968",
+    "new": "5382357040008021292",
+    "work": "5386367538735104399",
+    "done": "5206607081334906820",
+    "open": "5193177581888755275",
+    "search": "5379999674193172777",
+    "export": "5444856076954520455",
+    "menu": "5197269100878907942",
+}
+
+def _button_icon(text):
+    t = (text or "").lower()
+    if "дебет" in t: return PREMIUM_BUTTON_EMOJI["debit"]
+    if "кредит" in t: return PREMIUM_BUTTON_EMOJI["credit"]
+    if "рко" in t or "регистрация бизнеса" in t: return PREMIUM_BUTTON_EMOJI["rko"]
+    if "оставить заявку" in t: return PREMIUM_BUTTON_EMOJI["form"]
+    if "отправить" in t: return PREMIUM_BUTTON_EMOJI["send"]
+    if "изменить" in t: return PREMIUM_BUTTON_EMOJI["edit"]
+    if "отмена" in t: return PREMIUM_BUTTON_EMOJI["cancel"]
+    if "назад" in t or "в меню" in t or "главное меню" in t: return PREMIUM_BUTTON_EMOJI["back"]
+    if "панель администратора" in t or "админ" in t: return PREMIUM_BUTTON_EMOJI["admin"]
+    if "панель менеджера" in t or t in {"эдуард", "александр"}: return PREMIUM_BUTTON_EMOJI["manager"]
+    if "мои заявки" in t or "все заявки" in t: return PREMIUM_BUTTON_EMOJI["apps"]
+    if "статист" in t: return PREMIUM_BUTTON_EMOJI["stats"]
+    if "отчёт" in t or "отчет" in t: return PREMIUM_BUTTON_EMOJI["report"]
+    if "обнов" in t: return PREMIUM_BUTTON_EMOJI["refresh"]
+    if "взять в работу" in t: return PREMIUM_BUTTON_EMOJI["work"]
+    if "заверш" in t: return PREMIUM_BUTTON_EMOJI["done"]
+    if "открыть" in t: return PREMIUM_BUTTON_EMOJI["open"]
+    if "поиск" in t: return PREMIUM_BUTTON_EMOJI["search"]
+    if "экспорт" in t: return PREMIUM_BUTTON_EMOJI["export"]
+    return PREMIUM_BUTTON_EMOJI["menu"]
+
+def _premiumize_button(button):
+    if getattr(button, "icon_custom_emoji_id", None):
+        return button
+    data = button.to_dict()
+    data["icon_custom_emoji_id"] = _button_icon(button.text)
+    return InlineKeyboardButton.de_json(data)
+
 def mk(rows):
-    return InlineKeyboardMarkup(rows)
+    return InlineKeyboardMarkup([[_premiumize_button(b) for b in row] for row in rows])
 
 
 def custom_emoji(kind, fallback):
@@ -131,106 +189,6 @@ def custom_emoji(kind, fallback):
     if eid:
         return f'<tg-emoji emoji-id="{escape(eid)}">{fallback}</tg-emoji>'
     return fallback
-
-
-
-# Convert ordinary Unicode emoji in outgoing MESSAGE TEXT to Telegram custom emoji.
-# Inline keyboard button labels are intentionally left as plain text because Bot API
-# button text does not support custom-emoji entities/HTML markup.
-PREMIUM_TEXT_EMOJI = {
-    '👋': "5438496463044752972",
-    '💳': "5445353829304387411",
-    '💰': "5287231198098117669",
-    '🏢': "5278702045883292456",
-    '📝': "5197269100878907942",
-    '◀️': "5416117059207572332",
-    '⛔': "5210952531676504517",
-    '✅': "5206607081334906820",
-    '👨\u200d💼': "5373012449597335010",
-    '👤': "5190498849440931467",
-    '📱': "5447410659077661506",
-    '🧑': "5373012449597335010",
-    '🆔': "5382194935057372936",
-    '🔐': "5210956306952758910",
-    '📞': "5197269100878907942",
-    '🏦': "5332455502917949981",
-    '💵': "5445353829304387411",
-    '💸': "5287231198098117669",
-    '💼': "5278702045883292456",
-    '📋': "5253742260054409879",
-    '🆕': "5382357040008021292",
-    '🔄': "5386367538735104399",
-    '🔎': "5444856076954520455",
-    '📄': "5193177581888755275",
-    '📌': "5379999674193172777",
-    '📊': "5231200819986047254",
-    '📈': "5197269100878907942",
-    '⚙️': "5217822164362739968",
-    '👥': "5341715473882955310",
-    '📤': "5231200819986047254",
-    '🗂': "5244837092042750681",
-    '🛍': "5197269100878907942",
-    '🕐': "5382357040008021292",
-    '✨': "5386367538735104399",
-    '🔔': "5206607081334906820",
-    '📢': "5190498849440931467",
-    '🚀': "5445355530111437729",
-    '💬': "5443127283898405358",
-    'ℹ️': "5231012545799666522",
-    '⭐': "5231200819986047254",
-    '🧾': "5244837092042750681",
-    '📅': "5246762912428603768",
-    '📆': "5303214794336125778",
-    '🏆': "5274055917766202507",
-    '🎯': "5413879192267805083",
-    '📦': "5382194935057372936",
-    '📚': "5382194935057372936",
-    '🔧': "5287231198098117669",
-    '🛠': "5310278924616356636",
-    '💡': "5440539497383087970",
-    '🔗': "5424972470023104089",
-    '📑': "5244837092042750681",
-    '🗓': "5231200819986047254",
-    '🧮': "5413879192267805083",
-    '📉': "5274055917766202507",
-    '🔢': "5274055917766202507",
-    '🔍': "5444856076954520455",
-    '📥': "5382357040008021292",
-    '📬': "5386367538735104399",
-    '🟢': "5206607081334906820",
-    '🟡': "5190498849440931467",
-    '🔴': "5445353829304387411",
-    '🎉': "5287231198098117669",
-    '💎': "5278702045883292456",
-    '🏗️': "5332455502917949981",
-    '🤝': "5458603043203327669",
-    '🔒': "5424818078833715060",
-    '📣': "5395695537687123235",
-    '👨\u200d💻': "5461117441612462242",
-    '🧑\u200d💼': "5456140674028019486",
-    '🛡️': "5424972470023104089",
-    '⚡': "5341715473882955310",
-    '📲': "5197371802136892976",
-    '📍': "5447644880824181073",
-    '🗣️': "5445267414562389170",
-    '🧠': "5395444784611480792",
-    '🔓': "5206607081334906820",
-    '🧹': "5197288647275071607",
-    '🔘': "5251203410396458957",
-    '⭕': "5197288647275071607",
-    '➕': "5271604874419647061",
-}
-
-def premiumize(text):
-    """Replace supported Unicode emoji in message text with Telegram custom emoji HTML."""
-    if not isinstance(text, str):
-        return text
-    for fallback, eid in PREMIUM_TEXT_EMOJI.items():
-        text = text.replace(
-            fallback,
-            f'<tg-emoji emoji-id="{escape(eid)}">{escape(fallback)}</tg-emoji>'
-        )
-    return text
 
 
 def main_kb(uid):
@@ -260,7 +218,7 @@ def manager_kb():
         [InlineKeyboardButton("Все заявки", callback_data="all_apps")],
         [InlineKeyboardButton("Статистика", callback_data="stats")],
         [InlineKeyboardButton("Отчёт за сегодня", callback_data="today_report")],
-        [InlineKeyboardButton("В меню", callback_data="main")]
+        [InlineKeyboardButton("◀️ В меню", callback_data="main")]
     ])
 
 
@@ -271,7 +229,7 @@ def admin_kb():
         [InlineKeyboardButton("Отчёт за сегодня", callback_data="today_report")],
         [InlineKeyboardButton("Менеджеры", callback_data="managers")],
         [InlineKeyboardButton("Экспорт CSV", callback_data="export")],
-        [InlineKeyboardButton("В меню", callback_data="main")]
+        [InlineKeyboardButton("◀️ В меню", callback_data="main")]
     ])
 
 
@@ -288,7 +246,7 @@ def app_actions(app_id, status):
 async def safe_edit(q, text, reply_markup=None):
     try:
         await q.edit_message_text(
-            premiumize(text), parse_mode=ParseMode.HTML, reply_markup=reply_markup
+            text, parse_mode=ParseMode.HTML, reply_markup=reply_markup
         )
     except BadRequest as e:
         if "Message is not modified" not in str(e):
@@ -310,40 +268,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             datetime.now().isoformat(timespec="seconds")
         ))
     await update.message.reply_text(
-        premiumize("👋 <b>Добро пожаловать в Media Bank!</b>\n\n"
-        "Выберите интересующую вас услугу:"),
+        "👋 <b>Добро пожаловать в Media Bank!</b>\n\n"
+        "Выберите интересующую вас услугу:",
         parse_mode=ParseMode.HTML,
         reply_markup=main_kb(u.id)
     )
 
 
 async def help_cmd(update, context):
-    await update.message.reply_text(premiumize(
+    await update.message.reply_text(
         "Используйте /start для открытия меню.\n"
         "Сотрудники: /panel\n"
         "Администратор: /admin"
-    ), parse_mode=ParseMode.HTML)
+    )
 
 
 async def myid(update, context):
     await update.message.reply_text(
-        premiumize(f"Ваш Telegram ID: <code>{update.effective_user.id}</code>"),
+        f"Ваш Telegram ID: <code>{update.effective_user.id}</code>",
         parse_mode=ParseMode.HTML
     )
 
 
 async def panel_cmd(update, context):
     if not is_manager(update.effective_user.id):
-        await update.message.reply_text(premiumize("⛔ Доступ только для сотрудников."), parse_mode=ParseMode.HTML)
+        await update.message.reply_text("⛔ Доступ только для сотрудников.")
         return
-    await update.message.reply_text(premiumize("👨‍💼 <b>Панель менеджера</b>"), parse_mode=ParseMode.HTML, reply_markup=manager_kb())
+    await update.message.reply_text("👨‍💼 <b>Панель менеджера</b>", parse_mode=ParseMode.HTML, reply_markup=manager_kb())
 
 
 async def admin_cmd(update, context):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text(premiumize("⛔ Доступ только администратору."), parse_mode=ParseMode.HTML)
+        await update.message.reply_text("⛔ Доступ только администратору.")
         return
-    await update.message.reply_text(premiumize("⚙️ <b>Админ-панель</b>"), parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+    await update.message.reply_text("⚙️ <b>Админ-панель</b>", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
 
 
 async def ask_name(q, context):
@@ -351,7 +309,7 @@ async def ask_name(q, context):
     await safe_edit(
         q,
         "📝 <b>Заявка</b>\n\nВведите ваше имя:",
-        mk([[InlineKeyboardButton("В меню", callback_data="main")]])
+        mk([[InlineKeyboardButton("◀️ В меню", callback_data="main")]])
     )
 
 
@@ -360,17 +318,17 @@ async def text_input(update, context):
         return
     name = update.message.text.strip()
     if not name:
-        await update.message.reply_text(premiumize("Введите имя текстом."), parse_mode=ParseMode.HTML)
+        await update.message.reply_text("Введите имя текстом.")
         return
     context.user_data["name"] = name
     context.user_data["state"] = "manager"
     await update.message.reply_text(
-        premiumize("👨‍💼 <b>Выберите менеджера:</b>"),
+        "👨‍💼 <b>Выберите менеджера:</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=mk([
             [InlineKeyboardButton("Эдуард", callback_data="manager:6045840701")],
             [InlineKeyboardButton("Александр", callback_data="manager:8923153510")],
-            [InlineKeyboardButton("В меню", callback_data="main")]
+            [InlineKeyboardButton("◀️ В меню", callback_data="main")]
         ])
     )
 
@@ -410,7 +368,7 @@ async def create_application(q, context):
     try:
         await context.bot.send_message(
             GROUP_ID,
-            premiumize(notification),
+            notification,
             parse_mode=ParseMode.HTML,
             reply_markup=app_actions(app_id, "new")
         )
@@ -491,7 +449,7 @@ async def send_daily_report(app, manual=False):
         (start + timedelta(days=1)).isoformat(timespec="seconds")
     )
     try:
-        await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
+        await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
         with db() as c:
             c.execute(
                 "INSERT INTO report_log(kind,created_at) VALUES(?,?)",
@@ -512,7 +470,7 @@ async def send_weekly_report(app):
         (now + timedelta(days=1)).isoformat(timespec="seconds")
     )
     try:
-        await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
+        await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
         with db() as c:
             c.execute(
                 "INSERT INTO report_log(kind,created_at) VALUES(?,?)",
@@ -565,7 +523,7 @@ async def list_apps(q, mine=False):
         await safe_edit(
             q, "📋 <b>Заявок пока нет.</b>",
             mk([[InlineKeyboardButton(
-                "◀️ Назад",
+                "Назад",
                 callback_data="admin" if is_admin(q.from_user.id) else "manager"
             )]])
         )
@@ -589,7 +547,7 @@ async def list_apps(q, mine=False):
 
     buttons.append([
         InlineKeyboardButton(
-            "◀️ Назад",
+            "Назад",
             callback_data="admin" if is_admin(q.from_user.id) else "manager"
         )
     ])
@@ -615,7 +573,7 @@ async def view_app(q, app_id):
     aid, uid, username, name, product, manager_name, status, created, taken, completed = row
     status_text = {
         "new": "🆕 Новая",
-        "in_work": "🔄 В работе",
+        "in_work": "В работе",
         "completed": "✅ Завершена"
     }.get(status, status)
 
@@ -638,7 +596,7 @@ async def view_app(q, app_id):
 
 async def export_csv(update, context):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text(premiumize("⛔ Доступ только администратору."), parse_mode=ParseMode.HTML)
+        await update.message.reply_text("⛔ Доступ только администратору.")
         return
 
     path = "applications_export.csv"
@@ -661,7 +619,7 @@ async def export_csv(update, context):
     with open(path, "rb") as f:
         await update.message.reply_document(
             document=InputFile(f, filename="media_bank_applications.csv"),
-            caption=premiumize("📤 Экспорт заявок")
+            caption="📤 Экспорт заявок"
         )
     try:
         os.remove(path)
@@ -708,7 +666,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👨‍💼 Менеджер: {escape(MANAGERS[mid])}\n\n"
             "Всё верно?",
             mk([
-                [InlineKeyboardButton("Отправить", callback_data="send_app")],
+                [InlineKeyboardButton("✅ Отправить", callback_data="send_app")],
                 [InlineKeyboardButton("Назад", callback_data="start_form")]
             ])
         )
@@ -748,7 +706,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(
             q, text,
             mk([[InlineKeyboardButton(
-                "◀️ Назад",
+                "Назад",
                 callback_data="admin" if is_admin(uid) else "manager"
             )]])
         )
@@ -782,7 +740,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 w.writerow(["id","user_id","username","name","product","manager","status","created_at","taken_at","completed_at"])
                 w.writerows(rows)
             with open(path, "rb") as f:
-                await q.message.reply_document(InputFile(f, filename="media_bank_applications.csv"), caption=premiumize("📤 Экспорт заявок"))
+                await q.message.reply_document(InputFile(f, filename="media_bank_applications.csv"), caption="📤 Экспорт заявок")
             try:
                 os.remove(path)
             except OSError:
@@ -833,7 +791,7 @@ async def show_stats(q):
         f"✅ Завершённых: <b>{done}</b>\n"
         f"📈 Конверсия: <b>{conversion:.1f}%</b>",
         mk([[InlineKeyboardButton(
-            "◀️ Назад",
+            "Назад",
             callback_data="admin" if is_admin(q.from_user.id) else "manager"
         )]])
     )
@@ -841,16 +799,16 @@ async def show_stats(q):
 
 async def report_cmd(update, context):
     if not is_manager(update.effective_user.id) and not is_admin(update.effective_user.id):
-        await update.message.reply_text(premiumize("⛔ Доступ запрещён."), parse_mode=ParseMode.HTML)
+        await update.message.reply_text("⛔ Доступ запрещён.")
         return
     now = datetime.now()
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     await update.message.reply_text(
-        premiumize(format_report(
+        format_report(
             f"Отчёт за {now:%d.%m.%Y}",
             start.isoformat(timespec="seconds"),
             (start + timedelta(days=1)).isoformat(timespec="seconds")
-        )),
+        ),
         parse_mode=ParseMode.HTML
     )
 
@@ -884,7 +842,7 @@ async def send_daily_report(app):
         start.isoformat(timespec="seconds"),
         (start + timedelta(days=1)).isoformat(timespec="seconds")
     )
-    await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
+    await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
     with db() as c:
         c.execute("INSERT INTO report_log(kind,created_at) VALUES(?,?)", ("daily_auto", now.isoformat(timespec="seconds")))
 
@@ -897,7 +855,7 @@ async def send_weekly_report(app):
         start.isoformat(timespec="seconds"),
         (now + timedelta(days=1)).isoformat(timespec="seconds")
     )
-    await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
+    await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
     with db() as c:
         c.execute("INSERT INTO report_log(kind,created_at) VALUES(?,?)", ("weekly_auto", now.isoformat(timespec="seconds")))
 
