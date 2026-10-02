@@ -59,12 +59,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
-PREMIUM_TEST_ID = "5438496463044752972"
-
-
-def premium_test_emoji(fallback="⭐"):
-    return f'<tg-emoji emoji-id="{escape(PREMIUM_TEST_ID)}">{escape(fallback)}</tg-emoji>'
-
 log = logging.getLogger("media_bank")
 
 PRODUCTS = {
@@ -139,62 +133,162 @@ def custom_emoji(kind, fallback):
     return fallback
 
 
+
+# Convert ordinary Unicode emoji in outgoing MESSAGE TEXT to Telegram custom emoji.
+# Inline keyboard button labels are intentionally left as plain text because Bot API
+# button text does not support custom-emoji entities/HTML markup.
+PREMIUM_TEXT_EMOJI = {
+    '👋': "5438496463044752972",
+    '💳': "5445353829304387411",
+    '💰': "5287231198098117669",
+    '🏢': "5278702045883292456",
+    '📝': "5197269100878907942",
+    '◀️': "5416117059207572332",
+    '⛔': "5210952531676504517",
+    '✅': "5206607081334906820",
+    '👨\u200d💼': "5373012449597335010",
+    '👤': "5190498849440931467",
+    '📱': "5447410659077661506",
+    '🧑': "5373012449597335010",
+    '🆔': "5382194935057372936",
+    '🔐': "5210956306952758910",
+    '📞': "5197269100878907942",
+    '🏦': "5332455502917949981",
+    '💵': "5445353829304387411",
+    '💸': "5287231198098117669",
+    '💼': "5278702045883292456",
+    '📋': "5253742260054409879",
+    '🆕': "5382357040008021292",
+    '🔄': "5386367538735104399",
+    '🔎': "5444856076954520455",
+    '📄': "5193177581888755275",
+    '📌': "5379999674193172777",
+    '📊': "5231200819986047254",
+    '📈': "5197269100878907942",
+    '⚙️': "5217822164362739968",
+    '👥': "5341715473882955310",
+    '📤': "5231200819986047254",
+    '🗂': "5244837092042750681",
+    '🛍': "5197269100878907942",
+    '🕐': "5382357040008021292",
+    '✨': "5386367538735104399",
+    '🔔': "5206607081334906820",
+    '📢': "5190498849440931467",
+    '🚀': "5445355530111437729",
+    '💬': "5443127283898405358",
+    'ℹ️': "5231012545799666522",
+    '⭐': "5231200819986047254",
+    '🧾': "5244837092042750681",
+    '📅': "5246762912428603768",
+    '📆': "5303214794336125778",
+    '🏆': "5274055917766202507",
+    '🎯': "5413879192267805083",
+    '📦': "5382194935057372936",
+    '📚': "5382194935057372936",
+    '🔧': "5287231198098117669",
+    '🛠': "5310278924616356636",
+    '💡': "5440539497383087970",
+    '🔗': "5424972470023104089",
+    '📑': "5244837092042750681",
+    '🗓': "5231200819986047254",
+    '🧮': "5413879192267805083",
+    '📉': "5274055917766202507",
+    '🔢': "5274055917766202507",
+    '🔍': "5444856076954520455",
+    '📥': "5382357040008021292",
+    '📬': "5386367538735104399",
+    '🟢': "5206607081334906820",
+    '🟡': "5190498849440931467",
+    '🔴': "5445353829304387411",
+    '🎉': "5287231198098117669",
+    '💎': "5278702045883292456",
+    '🏗️': "5332455502917949981",
+    '🤝': "5458603043203327669",
+    '🔒': "5424818078833715060",
+    '📣': "5395695537687123235",
+    '👨\u200d💻': "5461117441612462242",
+    '🧑\u200d💼': "5456140674028019486",
+    '🛡️': "5424972470023104089",
+    '⚡': "5341715473882955310",
+    '📲': "5197371802136892976",
+    '📍': "5447644880824181073",
+    '🗣️': "5445267414562389170",
+    '🧠': "5395444784611480792",
+    '🔓': "5206607081334906820",
+    '🧹': "5197288647275071607",
+    '🔘': "5251203410396458957",
+    '⭕': "5197288647275071607",
+    '➕': "5271604874419647061",
+}
+
+def premiumize(text):
+    """Replace supported Unicode emoji in message text with Telegram custom emoji HTML."""
+    if not isinstance(text, str):
+        return text
+    for fallback, eid in PREMIUM_TEXT_EMOJI.items():
+        text = text.replace(
+            fallback,
+            f'<tg-emoji emoji-id="{escape(eid)}">{escape(fallback)}</tg-emoji>'
+        )
+    return text
+
+
 def main_kb(uid):
     rows = [
-        [InlineKeyboardButton("💳 Дебетовая карта", callback_data="product:debit")],
-        [InlineKeyboardButton("💰 Кредитная карта", callback_data="product:credit")],
-        [InlineKeyboardButton("🏢 Регистрация бизнеса + РКО", callback_data="product:rko")],
-        [InlineKeyboardButton("📝 Оставить заявку", callback_data="start_form")],
+        [InlineKeyboardButton("Дебетовая карта", callback_data="product:debit")],
+        [InlineKeyboardButton("Кредитная карта", callback_data="product:credit")],
+        [InlineKeyboardButton("Регистрация бизнеса + РКО", callback_data="product:rko")],
+        [InlineKeyboardButton("Оставить заявку", callback_data="start_form")],
     ]
     if is_admin(uid):
-        rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin")])
+        rows.append([InlineKeyboardButton("Админ-панель", callback_data="admin")])
     elif is_manager(uid):
-        rows.append([InlineKeyboardButton("👨‍💼 Панель менеджера", callback_data="manager")])
+        rows.append([InlineKeyboardButton("Панель менеджера", callback_data="manager")])
     return mk(rows)
 
 
 def product_kb():
     return mk([
-        [InlineKeyboardButton("📝 Оставить заявку", callback_data="start_form")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="main")]
+        [InlineKeyboardButton("Оставить заявку", callback_data="start_form")],
+        [InlineKeyboardButton("Назад", callback_data="main")]
     ])
 
 
 def manager_kb():
     return mk([
-        [InlineKeyboardButton("🗂 Мои заявки", callback_data="my_apps")],
-        [InlineKeyboardButton("📋 Все заявки", callback_data="all_apps")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
-        [InlineKeyboardButton("📈 Отчёт за сегодня", callback_data="today_report")],
-        [InlineKeyboardButton("◀️ В меню", callback_data="main")]
+        [InlineKeyboardButton("Мои заявки", callback_data="my_apps")],
+        [InlineKeyboardButton("Все заявки", callback_data="all_apps")],
+        [InlineKeyboardButton("Статистика", callback_data="stats")],
+        [InlineKeyboardButton("Отчёт за сегодня", callback_data="today_report")],
+        [InlineKeyboardButton("В меню", callback_data="main")]
     ])
 
 
 def admin_kb():
     return mk([
-        [InlineKeyboardButton("📋 Все заявки", callback_data="all_apps")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
-        [InlineKeyboardButton("📈 Отчёт за сегодня", callback_data="today_report")],
-        [InlineKeyboardButton("👥 Менеджеры", callback_data="managers")],
-        [InlineKeyboardButton("📤 Экспорт CSV", callback_data="export")],
-        [InlineKeyboardButton("◀️ В меню", callback_data="main")]
+        [InlineKeyboardButton("Все заявки", callback_data="all_apps")],
+        [InlineKeyboardButton("Статистика", callback_data="stats")],
+        [InlineKeyboardButton("Отчёт за сегодня", callback_data="today_report")],
+        [InlineKeyboardButton("Менеджеры", callback_data="managers")],
+        [InlineKeyboardButton("Экспорт CSV", callback_data="export")],
+        [InlineKeyboardButton("В меню", callback_data="main")]
     ])
 
 
 def app_actions(app_id, status):
     rows = []
     if status == "new":
-        rows.append([InlineKeyboardButton("👤 Взять в работу", callback_data=f"take:{app_id}")])
+        rows.append([InlineKeyboardButton("Взять в работу", callback_data=f"take:{app_id}")])
     elif status == "in_work":
-        rows.append([InlineKeyboardButton("✅ Завершить", callback_data=f"complete:{app_id}")])
-    rows.append([InlineKeyboardButton("🔎 Открыть", callback_data=f"view:{app_id}")])
+        rows.append([InlineKeyboardButton("Завершить", callback_data=f"complete:{app_id}")])
+    rows.append([InlineKeyboardButton("Открыть", callback_data=f"view:{app_id}")])
     return mk(rows)
 
 
 async def safe_edit(q, text, reply_markup=None):
     try:
         await q.edit_message_text(
-            text, parse_mode=ParseMode.HTML, reply_markup=reply_markup
+            premiumize(text), parse_mode=ParseMode.HTML, reply_markup=reply_markup
         )
     except BadRequest as e:
         if "Message is not modified" not in str(e):
@@ -216,40 +310,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             datetime.now().isoformat(timespec="seconds")
         ))
     await update.message.reply_text(
-        premium_test_emoji("⭐") + " <b>Добро пожаловать в Media Bank!</b>\n\n"
-        "Выберите интересующую вас услугу:",
+        premiumize("👋 <b>Добро пожаловать в Media Bank!</b>\n\n"
+        "Выберите интересующую вас услугу:"),
         parse_mode=ParseMode.HTML,
         reply_markup=main_kb(u.id)
     )
 
 
 async def help_cmd(update, context):
-    await update.message.reply_text(
+    await update.message.reply_text(premiumize(
         "Используйте /start для открытия меню.\n"
         "Сотрудники: /panel\n"
         "Администратор: /admin"
-    )
+    ), parse_mode=ParseMode.HTML)
 
 
 async def myid(update, context):
     await update.message.reply_text(
-        f"Ваш Telegram ID: <code>{update.effective_user.id}</code>",
+        premiumize(f"Ваш Telegram ID: <code>{update.effective_user.id}</code>"),
         parse_mode=ParseMode.HTML
     )
 
 
 async def panel_cmd(update, context):
     if not is_manager(update.effective_user.id):
-        await update.message.reply_text("⛔ Доступ только для сотрудников.")
+        await update.message.reply_text(premiumize("⛔ Доступ только для сотрудников."), parse_mode=ParseMode.HTML)
         return
-    await update.message.reply_text("👨‍💼 <b>Панель менеджера</b>", parse_mode=ParseMode.HTML, reply_markup=manager_kb())
+    await update.message.reply_text(premiumize("👨‍💼 <b>Панель менеджера</b>"), parse_mode=ParseMode.HTML, reply_markup=manager_kb())
 
 
 async def admin_cmd(update, context):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Доступ только администратору.")
+        await update.message.reply_text(premiumize("⛔ Доступ только администратору."), parse_mode=ParseMode.HTML)
         return
-    await update.message.reply_text("⚙️ <b>Админ-панель</b>", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+    await update.message.reply_text(premiumize("⚙️ <b>Админ-панель</b>"), parse_mode=ParseMode.HTML, reply_markup=admin_kb())
 
 
 async def ask_name(q, context):
@@ -257,7 +351,7 @@ async def ask_name(q, context):
     await safe_edit(
         q,
         "📝 <b>Заявка</b>\n\nВведите ваше имя:",
-        mk([[InlineKeyboardButton("◀️ В меню", callback_data="main")]])
+        mk([[InlineKeyboardButton("В меню", callback_data="main")]])
     )
 
 
@@ -266,17 +360,17 @@ async def text_input(update, context):
         return
     name = update.message.text.strip()
     if not name:
-        await update.message.reply_text("Введите имя текстом.")
+        await update.message.reply_text(premiumize("Введите имя текстом."), parse_mode=ParseMode.HTML)
         return
     context.user_data["name"] = name
     context.user_data["state"] = "manager"
     await update.message.reply_text(
-        "👨‍💼 <b>Выберите менеджера:</b>",
+        premiumize("👨‍💼 <b>Выберите менеджера:</b>"),
         parse_mode=ParseMode.HTML,
         reply_markup=mk([
             [InlineKeyboardButton("Эдуард", callback_data="manager:6045840701")],
             [InlineKeyboardButton("Александр", callback_data="manager:8923153510")],
-            [InlineKeyboardButton("◀️ В меню", callback_data="main")]
+            [InlineKeyboardButton("В меню", callback_data="main")]
         ])
     )
 
@@ -316,7 +410,7 @@ async def create_application(q, context):
     try:
         await context.bot.send_message(
             GROUP_ID,
-            notification,
+            premiumize(notification),
             parse_mode=ParseMode.HTML,
             reply_markup=app_actions(app_id, "new")
         )
@@ -397,7 +491,7 @@ async def send_daily_report(app, manual=False):
         (start + timedelta(days=1)).isoformat(timespec="seconds")
     )
     try:
-        await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
+        await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
         with db() as c:
             c.execute(
                 "INSERT INTO report_log(kind,created_at) VALUES(?,?)",
@@ -418,7 +512,7 @@ async def send_weekly_report(app):
         (now + timedelta(days=1)).isoformat(timespec="seconds")
     )
     try:
-        await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
+        await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
         with db() as c:
             c.execute(
                 "INSERT INTO report_log(kind,created_at) VALUES(?,?)",
@@ -544,7 +638,7 @@ async def view_app(q, app_id):
 
 async def export_csv(update, context):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Доступ только администратору.")
+        await update.message.reply_text(premiumize("⛔ Доступ только администратору."), parse_mode=ParseMode.HTML)
         return
 
     path = "applications_export.csv"
@@ -567,7 +661,7 @@ async def export_csv(update, context):
     with open(path, "rb") as f:
         await update.message.reply_document(
             document=InputFile(f, filename="media_bank_applications.csv"),
-            caption="📤 Экспорт заявок"
+            caption=premiumize("📤 Экспорт заявок")
         )
     try:
         os.remove(path)
@@ -614,8 +708,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👨‍💼 Менеджер: {escape(MANAGERS[mid])}\n\n"
             "Всё верно?",
             mk([
-                [InlineKeyboardButton("✅ Отправить", callback_data="send_app")],
-                [InlineKeyboardButton("◀️ Назад", callback_data="start_form")]
+                [InlineKeyboardButton("Отправить", callback_data="send_app")],
+                [InlineKeyboardButton("Назад", callback_data="start_form")]
             ])
         )
 
@@ -670,7 +764,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     (mid,)
                 ).fetchone()[0]
             text += f"👨‍💼 {escape(name)} — заявок: <b>{count}</b>\n"
-        await safe_edit(q, text, mk([[InlineKeyboardButton("◀️ Назад", callback_data="admin")]]))
+        await safe_edit(q, text, mk([[InlineKeyboardButton("Назад", callback_data="admin")]]))
 
     elif d == "export":
         if is_admin(uid):
@@ -688,7 +782,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 w.writerow(["id","user_id","username","name","product","manager","status","created_at","taken_at","completed_at"])
                 w.writerows(rows)
             with open(path, "rb") as f:
-                await q.message.reply_document(InputFile(f, filename="media_bank_applications.csv"), caption="📤 Экспорт заявок")
+                await q.message.reply_document(InputFile(f, filename="media_bank_applications.csv"), caption=premiumize("📤 Экспорт заявок"))
             try:
                 os.remove(path)
             except OSError:
@@ -747,16 +841,16 @@ async def show_stats(q):
 
 async def report_cmd(update, context):
     if not is_manager(update.effective_user.id) and not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Доступ запрещён.")
+        await update.message.reply_text(premiumize("⛔ Доступ запрещён."), parse_mode=ParseMode.HTML)
         return
     now = datetime.now()
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     await update.message.reply_text(
-        format_report(
+        premiumize(format_report(
             f"Отчёт за {now:%d.%m.%Y}",
             start.isoformat(timespec="seconds"),
             (start + timedelta(days=1)).isoformat(timespec="seconds")
-        ),
+        )),
         parse_mode=ParseMode.HTML
     )
 
@@ -790,7 +884,7 @@ async def send_daily_report(app):
         start.isoformat(timespec="seconds"),
         (start + timedelta(days=1)).isoformat(timespec="seconds")
     )
-    await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
+    await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
     with db() as c:
         c.execute("INSERT INTO report_log(kind,created_at) VALUES(?,?)", ("daily_auto", now.isoformat(timespec="seconds")))
 
@@ -803,7 +897,7 @@ async def send_weekly_report(app):
         start.isoformat(timespec="seconds"),
         (now + timedelta(days=1)).isoformat(timespec="seconds")
     )
-    await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
+    await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
     with db() as c:
         c.execute("INSERT INTO report_log(kind,created_at) VALUES(?,?)", ("weekly_auto", now.isoformat(timespec="seconds")))
 
