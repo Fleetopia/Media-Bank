@@ -39,20 +39,22 @@ WEEKLY_REPORT_DAY = int(os.getenv("WEEKLY_REPORT_DAY", "0"))  # Monday = 0
 WEEKLY_REPORT_HOUR = int(os.getenv("WEEKLY_REPORT_HOUR", "21"))
 WEEKLY_REPORT_MINUTE = int(os.getenv("WEEKLY_REPORT_MINUTE", "5"))
 
-# Premium/custom emoji support.
-# Confirmed Telegram custom emoji IDs supplied by the user.
-# Environment variables can override these defaults if needed.
+# Premium/custom emoji support:
+# Put Telegram custom emoji IDs in .env. If left blank, normal emoji are used.
+# Example:
+# EMOJI_NEW=5368324170671202286
+# EMOJI_OK=5368324170671202287
 CUSTOM_EMOJI = {
-    "new": os.getenv("EMOJI_NEW", "5382357040008021292").strip(),
-    "card": os.getenv("EMOJI_CARD", "5445353829304387411").strip(),
-    "money": os.getenv("EMOJI_MONEY", "5287231198098117669").strip(),
-    "building": os.getenv("EMOJI_BUILDING", "5278702045883292456").strip(),
-    "user": os.getenv("EMOJI_USER", "5190498849440931467").strip(),
-    "manager": os.getenv("EMOJI_MANAGER", "5373012449597335010").strip(),
-    "chart": os.getenv("EMOJI_CHART", "5231200819986047254").strip(),
-    "report": os.getenv("EMOJI_REPORT", "5244837092042750681").strip(),
-    "ok": os.getenv("EMOJI_OK", "5206607081334906820").strip(),
-    "work": os.getenv("EMOJI_WORK", "5386367538735104399").strip(),
+    "new": "5382357040008021292",
+    "card": "5445353829304387411",
+    "money": "5287231198098117669",
+    "building": "5278702045883292456",
+    "user": "5190498849440931467",
+    "manager": "5373012449597335010",
+    "chart": "5231200819986047254",
+    "report": "5244837092042750681",
+    "ok": "5206607081334906820",
+    "work": "5386367538735104399",
 }
 
 logging.basicConfig(
@@ -133,6 +135,19 @@ def custom_emoji(kind, fallback):
     return fallback
 
 
+def premiumize(text):
+    replacements = {
+        "🆕": custom_emoji("new", "🆕"), "💳": custom_emoji("card", "💳"),
+        "💰": custom_emoji("money", "💰"), "🏢": custom_emoji("building", "🏢"),
+        "👤": custom_emoji("user", "👤"), "👨‍💼": custom_emoji("manager", "👨‍💼"),
+        "📊": custom_emoji("chart", "📊"), "📈": custom_emoji("report", "📈"),
+        "📤": custom_emoji("report", "📤"), "✅": custom_emoji("ok", "✅"),
+        "🔄": custom_emoji("work", "🔄"),
+    }
+    for old,new in replacements.items(): text=text.replace(old,new)
+    return text
+
+
 def main_kb(uid):
     rows = [
         [InlineKeyboardButton("💳 Дебетовая карта", callback_data="product:debit")],
@@ -188,7 +203,7 @@ def app_actions(app_id, status):
 async def safe_edit(q, text, reply_markup=None):
     try:
         await q.edit_message_text(
-            text, parse_mode=ParseMode.HTML, reply_markup=reply_markup
+            premiumize(text), parse_mode=ParseMode.HTML, reply_markup=reply_markup
         )
     except BadRequest as e:
         if "Message is not modified" not in str(e):
@@ -304,13 +319,13 @@ async def create_application(q, context):
         f"{user_icon} Имя: <b>{escape(name)}</b>\n"
         f"📱 Telegram: @{escape(username) if username else 'нет username'}\n"
         f"{card_icon} Услуга: <b>{escape(product)}</b>\n"
-        f"{custom_emoji('manager', '👨‍💼')} Менеджер: <b>{escape(manager_name)}</b>\n"
+        f"👨‍💼 Менеджер: <b>{escape(manager_name)}</b>\n"
         f"🕐 {now}"
     )
     try:
         await context.bot.send_message(
             GROUP_ID,
-            notification,
+            premiumize(notification),
             parse_mode=ParseMode.HTML,
             reply_markup=app_actions(app_id, "new")
         )
@@ -361,7 +376,7 @@ def format_report(title, start=None, end=None):
     conversion = done / total * 100 if total else 0
 
     text = (
-        f"{custom_emoji('report', '📈')} <b>{escape(title)}</b>\n\n"
+        f"📈 <b>{escape(title)}</b>\n\n"
         f"📥 Всего заявок: <b>{total}</b>\n"
         f"🆕 Новых: <b>{new}</b>\n"
         f"🔄 В работе: <b>{work}</b>\n"
@@ -391,7 +406,7 @@ async def send_daily_report(app, manual=False):
         (start + timedelta(days=1)).isoformat(timespec="seconds")
     )
     try:
-        await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
+        await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
         with db() as c:
             c.execute(
                 "INSERT INTO report_log(kind,created_at) VALUES(?,?)",
@@ -412,7 +427,7 @@ async def send_weekly_report(app):
         (now + timedelta(days=1)).isoformat(timespec="seconds")
     )
     try:
-        await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
+        await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
         with db() as c:
             c.execute(
                 "INSERT INTO report_log(kind,created_at) VALUES(?,?)",
@@ -471,7 +486,7 @@ async def list_apps(q, mine=False):
         )
         return
 
-    symbols = {"new": custom_emoji("new", "🆕"), "in_work": custom_emoji("work", "🔄"), "completed": custom_emoji("ok", "✅")}
+    symbols = {"new": "🆕", "in_work": "🔄", "completed": "✅"}
     text = "📋 <b>Заявки</b>\n\n"
     buttons = []
 
@@ -514,9 +529,9 @@ async def view_app(q, app_id):
 
     aid, uid, username, name, product, manager_name, status, created, taken, completed = row
     status_text = {
-        "new": f"{custom_emoji('new', '🆕')} Новая",
-        "in_work": f"{custom_emoji('work', '🔄')} В работе",
-        "completed": f"{custom_emoji('ok', '✅')} Завершена"
+        "new": "🆕 Новая",
+        "in_work": "🔄 В работе",
+        "completed": "✅ Завершена"
     }.get(status, status)
 
     text = (
@@ -524,7 +539,7 @@ async def view_app(q, app_id):
         f"👤 Имя: {escape(name)}\n"
         f"📱 Telegram: @{escape(username) if username else 'нет'}\n"
         f"🛍 Услуга: {escape(product)}\n"
-        f"{custom_emoji('manager', '👨‍💼')} Менеджер: {escape(manager_name or 'не назначен')}\n"
+        f"👨‍💼 Менеджер: {escape(manager_name or 'не назначен')}\n"
         f"📌 Статус: {status_text}\n"
         f"🕐 Создана: {created}"
     )
@@ -561,7 +576,7 @@ async def export_csv(update, context):
     with open(path, "rb") as f:
         await update.message.reply_document(
             document=InputFile(f, filename="media_bank_applications.csv"),
-            caption="📤 Экспорт заявок"
+            caption=premiumize("📤 Экспорт заявок")
         )
     try:
         os.remove(path)
@@ -682,7 +697,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 w.writerow(["id","user_id","username","name","product","manager","status","created_at","taken_at","completed_at"])
                 w.writerows(rows)
             with open(path, "rb") as f:
-                await q.message.reply_document(InputFile(f, filename="media_bank_applications.csv"), caption="📤 Экспорт заявок")
+                await q.message.reply_document(InputFile(f, filename="media_bank_applications.csv"), caption=premiumize("📤 Экспорт заявок"))
             try:
                 os.remove(path)
             except OSError:
@@ -726,7 +741,7 @@ async def show_stats(q):
     conversion = done / total * 100 if total else 0
     await safe_edit(
         q,
-        f"{custom_emoji('chart', '📊')} <b>Статистика</b>\n\n"
+        f"📊 <b>Статистика</b>\n\n"
         f"Всего заявок: <b>{total}</b>\n"
         f"🆕 Новых: <b>{new}</b>\n"
         f"🔄 В работе: <b>{work}</b>\n"
@@ -784,7 +799,7 @@ async def send_daily_report(app):
         start.isoformat(timespec="seconds"),
         (start + timedelta(days=1)).isoformat(timespec="seconds")
     )
-    await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
+    await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
     with db() as c:
         c.execute("INSERT INTO report_log(kind,created_at) VALUES(?,?)", ("daily_auto", now.isoformat(timespec="seconds")))
 
@@ -797,7 +812,7 @@ async def send_weekly_report(app):
         start.isoformat(timespec="seconds"),
         (now + timedelta(days=1)).isoformat(timespec="seconds")
     )
-    await app.bot.send_message(REPORT_CHAT_ID, text, parse_mode=ParseMode.HTML)
+    await app.bot.send_message(REPORT_CHAT_ID, premiumize(text), parse_mode=ParseMode.HTML)
     with db() as c:
         c.execute("INSERT INTO report_log(kind,created_at) VALUES(?,?)", ("weekly_auto", now.isoformat(timespec="seconds")))
 
