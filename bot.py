@@ -24,7 +24,6 @@ GROUP_ID = int(os.getenv("GROUP_ID", "-1004381547715"))
 REPORT_CHAT_ID = int(os.getenv("REPORT_CHAT_ID", str(GROUP_ID)))
 PROXY = os.getenv("PROXY", "").strip()
 DB_FILE = "media_bank.db"
-BOT_VERSION = "PREMIUM-BUTTONS-2026-10-02"
 
 # Manager IDs used in the project.
 MANAGERS = {
@@ -63,9 +62,9 @@ logging.basicConfig(
 log = logging.getLogger("media_bank")
 
 PRODUCTS = {
-    "debit": ("Дебетовая карта", "Подберём подходящую дебетовую карту и передадим заявку специалисту."),
-    "credit": ("Кредитная карта", "Поможем подобрать кредитную карту и передадим заявку специалисту."),
-    "rko": ("Регистрация бизнеса + РКО", "Поможем оформить заявку на регистрацию бизнеса и РКО."),
+    "debit": ("💳 Дебетовая карта", "Подберём подходящую дебетовую карту и передадим заявку специалисту."),
+    "credit": ("💰 Кредитная карта", "Поможем подобрать кредитную карту и передадим заявку специалисту."),
+    "rko": ("🏢 Регистрация бизнеса + РКО", "Поможем оформить заявку на регистрацию бизнеса и РКО."),
 }
 
 
@@ -121,65 +120,8 @@ def is_manager(uid):
     return uid in MANAGERS
 
 
-# Custom/Premium emoji IDs supplied for the Media Bank interface.
-# Telegram supports these directly on keyboard buttons via icon_custom_emoji_id.
-PREMIUM_BUTTON_EMOJI = {
-    "debit": "5445353829304387411",
-    "credit": "5287231198098117669",
-    "rko": "5278702045883292456",
-    "form": "5210952531676504517",
-    "back": "5197269100878907942",
-    "cancel": "5253742260054409879",
-    "send": "5206607081334906820",
-    "edit": "5210952531676504517",
-    "manager": "5373012449597335010",
-    "user": "5190498849440931467",
-    "apps": "5447410659077661506",
-    "stats": "5231200819986047254",
-    "report": "5244837092042750681",
-    "refresh": "5197269100878907942",
-    "admin": "5217822164362739968",
-    "new": "5382357040008021292",
-    "work": "5386367538735104399",
-    "done": "5206607081334906820",
-    "open": "5193177581888755275",
-    "search": "5379999674193172777",
-    "export": "5444856076954520455",
-    "menu": "5197269100878907942",
-}
-
-def _button_icon(text):
-    t = (text or "").lower()
-    if "дебет" in t: return PREMIUM_BUTTON_EMOJI["debit"]
-    if "кредит" in t: return PREMIUM_BUTTON_EMOJI["credit"]
-    if "рко" in t or "регистрация бизнеса" in t: return PREMIUM_BUTTON_EMOJI["rko"]
-    if "оставить заявку" in t: return PREMIUM_BUTTON_EMOJI["form"]
-    if "отправить" in t: return PREMIUM_BUTTON_EMOJI["send"]
-    if "изменить" in t: return PREMIUM_BUTTON_EMOJI["edit"]
-    if "отмена" in t: return PREMIUM_BUTTON_EMOJI["cancel"]
-    if "назад" in t or "в меню" in t or "главное меню" in t: return PREMIUM_BUTTON_EMOJI["back"]
-    if "панель администратора" in t or "админ" in t: return PREMIUM_BUTTON_EMOJI["admin"]
-    if "панель менеджера" in t or t in {"эдуард", "александр"}: return PREMIUM_BUTTON_EMOJI["manager"]
-    if "мои заявки" in t or "все заявки" in t: return PREMIUM_BUTTON_EMOJI["apps"]
-    if "статист" in t: return PREMIUM_BUTTON_EMOJI["stats"]
-    if "отчёт" in t or "отчет" in t: return PREMIUM_BUTTON_EMOJI["report"]
-    if "обнов" in t: return PREMIUM_BUTTON_EMOJI["refresh"]
-    if "взять в работу" in t: return PREMIUM_BUTTON_EMOJI["work"]
-    if "заверш" in t: return PREMIUM_BUTTON_EMOJI["done"]
-    if "открыть" in t: return PREMIUM_BUTTON_EMOJI["open"]
-    if "поиск" in t: return PREMIUM_BUTTON_EMOJI["search"]
-    if "экспорт" in t: return PREMIUM_BUTTON_EMOJI["export"]
-    return PREMIUM_BUTTON_EMOJI["menu"]
-
-def _premiumize_button(button):
-    if getattr(button, "icon_custom_emoji_id", None):
-        return button
-    data = button.to_dict()
-    data["icon_custom_emoji_id"] = _button_icon(button.text)
-    return InlineKeyboardButton.de_json(data)
-
 def mk(rows):
-    return InlineKeyboardMarkup([[_premiumize_button(b) for b in row] for row in rows])
+    return InlineKeyboardMarkup(rows)
 
 
 def custom_emoji(kind, fallback):
@@ -191,55 +133,113 @@ def custom_emoji(kind, fallback):
     return fallback
 
 
+
+# Premium emoji icons for inline keyboard buttons.
+# These are assigned by the meaning of each button, using the user's supplied IDs.
+BUTTON_EMOJI = {
+    # Main client menu — IDs 1–8 from the supplied semantic set.
+    "debit": "5445353829304387411",          # №2 card
+    "credit": "5287231198098117669",         # №3 credit/money
+    "rko": "5278702045883292456",            # №4 business/RKO
+    "form": "5197269100878907942",            # №5 application
+    "back": "5416117059207572332",            # №6 back
+    "cancel": "5210952531676504517",         # №7 cancel/edit
+    "confirm": "5206607081334906820",         # №8 confirm/send
+
+    # Client / manager / application actions.
+    "manager": "5373012449597335010",         # №9 manager
+    "user": "5190498849440931467",            # №10 user/client
+    "apps": "5447410659077661506",            # №11 applications
+    "all_apps": "5382194935057372936",        # №13 all applications
+
+    # Statistics / reports.
+    "stats": "5231200819986047254",           # №30 chart/statistics
+    "report": "5244837092042750681",          # №32 report
+
+    # Application status/actions.
+    "refresh": "5253742260054409879",         # №20 refresh/update
+    "new": "5382357040008021292",             # №21 new
+    "work": "5386367538735104399",            # №22 in work
+    "done": "5206607081334906820",            # №23 completed
+    "edit": "5444856076954520455",             # №24 edit/action
+    "open": "5193177581888755275",            # №25 open
+    "search": "5379999674193172777",          # №26 search
+
+    # Administration.
+    "admin": "5217822164362739968",           # №37 admin panel
+    "export": "5443127283898405358",          # №47 export
+    "menu": "5416117059207572332",            # №6 back to menu
+    "building": "5278702045883292456",       # №4 business/RKO
+}
+
+
+def btn(text, callback_data, kind=None):
+    # Custom emoji is rendered as the button's native icon (Bot API 7.11+/PTB 22.7+).
+    # Remove ordinary leading emoji from button labels so they are not duplicated.
+    if kind is None:
+        kind = "back" if "Назад" in text or "В меню" in text else None
+    fallback_map = {
+        "💳": "", "💰": "", "🏢": "", "📝": "", "◀️": "",
+        "🗂": "", "📋": "", "📊": "", "📈": "", "👥": "",
+        "📤": "", "👤": "", "✅": "", "🔎": "", "⚙️": "",
+        "👨‍💼": "", "🆕": "", "🔄": "",
+    }
+    for prefix, replacement in fallback_map.items():
+        if text.startswith(prefix):
+            text = text[len(prefix):].lstrip()
+            break
+    eid = BUTTON_EMOJI.get(kind or "")
+    return InlineKeyboardButton(text, callback_data=callback_data, icon_custom_emoji_id=eid or None)
+
 def main_kb(uid):
     rows = [
-        [InlineKeyboardButton("Дебетовая карта", callback_data="product:debit")],
-        [InlineKeyboardButton("Кредитная карта", callback_data="product:credit")],
-        [InlineKeyboardButton("Регистрация бизнеса + РКО", callback_data="product:rko")],
-        [InlineKeyboardButton("Оставить заявку", callback_data="start_form")],
+        [btn("💳 Дебетовая карта", "product:debit", "debit")],
+        [btn("💰 Кредитная карта", "product:credit", "credit")],
+        [btn("🏢 Регистрация бизнеса + РКО", "product:rko", "rko")],
+        [btn("📝 Оставить заявку", "start_form", "form")],
     ]
     if is_admin(uid):
-        rows.append([InlineKeyboardButton("Админ-панель", callback_data="admin")])
+        rows.append([btn("⚙️ Админ-панель", "admin", "admin")])
     elif is_manager(uid):
-        rows.append([InlineKeyboardButton("Панель менеджера", callback_data="manager")])
+        rows.append([btn("👨‍💼 Панель менеджера", "manager", "manager")])
     return mk(rows)
 
 
 def product_kb():
     return mk([
-        [InlineKeyboardButton("Оставить заявку", callback_data="start_form")],
-        [InlineKeyboardButton("Назад", callback_data="main")]
+        [btn("📝 Оставить заявку", "start_form", "form")],
+        [btn("◀️ Назад", "main", "back")]
     ])
 
 
 def manager_kb():
     return mk([
-        [InlineKeyboardButton("Мои заявки", callback_data="my_apps")],
-        [InlineKeyboardButton("Все заявки", callback_data="all_apps")],
-        [InlineKeyboardButton("Статистика", callback_data="stats")],
-        [InlineKeyboardButton("Отчёт за сегодня", callback_data="today_report")],
-        [InlineKeyboardButton("◀️ В меню", callback_data="main")]
+        [btn("🗂 Мои заявки", "my_apps", "apps")],
+        [btn("📋 Все заявки", "all_apps", "all_apps")],
+        [btn("📊 Статистика", "stats", "stats")],
+        [btn("📈 Отчёт за сегодня", "today_report", "report")],
+        [btn("◀️ В меню", "main", "menu")]
     ])
 
 
 def admin_kb():
     return mk([
-        [InlineKeyboardButton("Все заявки", callback_data="all_apps")],
-        [InlineKeyboardButton("Статистика", callback_data="stats")],
-        [InlineKeyboardButton("Отчёт за сегодня", callback_data="today_report")],
-        [InlineKeyboardButton("Менеджеры", callback_data="managers")],
-        [InlineKeyboardButton("Экспорт CSV", callback_data="export")],
-        [InlineKeyboardButton("◀️ В меню", callback_data="main")]
+        [btn("📋 Все заявки", "all_apps", "all_apps")],
+        [btn("📊 Статистика", "stats", "stats")],
+        [btn("📈 Отчёт за сегодня", "today_report", "report")],
+        [btn("👥 Менеджеры", "managers", "manager")],
+        [btn("📤 Экспорт CSV", "export", "export")],
+        [btn("◀️ В меню", "main", "menu")]
     ])
 
 
 def app_actions(app_id, status):
     rows = []
     if status == "new":
-        rows.append([InlineKeyboardButton("Взять в работу", callback_data=f"take:{app_id}")])
+        rows.append([btn("👤 Взять в работу", f"take:{app_id}", "work")])
     elif status == "in_work":
-        rows.append([InlineKeyboardButton("Завершить", callback_data=f"complete:{app_id}")])
-    rows.append([InlineKeyboardButton("Открыть", callback_data=f"view:{app_id}")])
+        rows.append([btn("✅ Завершить", f"complete:{app_id}", "done")])
+    rows.append([btn("🔎 Открыть", f"view:{app_id}", "open")])
     return mk(rows)
 
 
@@ -309,7 +309,7 @@ async def ask_name(q, context):
     await safe_edit(
         q,
         "📝 <b>Заявка</b>\n\nВведите ваше имя:",
-        mk([[InlineKeyboardButton("◀️ В меню", callback_data="main")]])
+        mk([[btn("◀️ В меню", "main", "menu")]])
     )
 
 
@@ -326,9 +326,9 @@ async def text_input(update, context):
         "👨‍💼 <b>Выберите менеджера:</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=mk([
-            [InlineKeyboardButton("Эдуард", callback_data="manager:6045840701")],
-            [InlineKeyboardButton("Александр", callback_data="manager:8923153510")],
-            [InlineKeyboardButton("◀️ В меню", callback_data="main")]
+            [btn("Эдуард", "manager:6045840701", "manager")],
+            [btn("Александр", "manager:8923153510", "manager")],
+            [btn("◀️ В меню", "main", "menu")]
         ])
     )
 
@@ -523,7 +523,7 @@ async def list_apps(q, mine=False):
         await safe_edit(
             q, "📋 <b>Заявок пока нет.</b>",
             mk([[InlineKeyboardButton(
-                "Назад",
+                "◀️ Назад",
                 callback_data="admin" if is_admin(q.from_user.id) else "manager"
             )]])
         )
@@ -539,15 +539,16 @@ async def list_apps(q, mine=False):
             f"{escape(name)} — {escape(product)}\n"
         )
         buttons.append([
-            InlineKeyboardButton(
+            btn(
                 f"🔎 Открыть #{aid}",
-                callback_data=f"view:{aid}"
+                f"view:{aid}",
+                "open"
             )
         ])
 
     buttons.append([
         InlineKeyboardButton(
-            "Назад",
+            "◀️ Назад",
             callback_data="admin" if is_admin(q.from_user.id) else "manager"
         )
     ])
@@ -573,7 +574,7 @@ async def view_app(q, app_id):
     aid, uid, username, name, product, manager_name, status, created, taken, completed = row
     status_text = {
         "new": "🆕 Новая",
-        "in_work": "В работе",
+        "in_work": "🔄 В работе",
         "completed": "✅ Завершена"
     }.get(status, status)
 
@@ -666,8 +667,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👨‍💼 Менеджер: {escape(MANAGERS[mid])}\n\n"
             "Всё верно?",
             mk([
-                [InlineKeyboardButton("✅ Отправить", callback_data="send_app")],
-                [InlineKeyboardButton("Назад", callback_data="start_form")]
+                [btn("✅ Отправить", "send_app", "confirm")],
+                [btn("◀️ Назад", "start_form", "back")]
             ])
         )
 
@@ -706,7 +707,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(
             q, text,
             mk([[InlineKeyboardButton(
-                "Назад",
+                "◀️ Назад",
                 callback_data="admin" if is_admin(uid) else "manager"
             )]])
         )
@@ -722,7 +723,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     (mid,)
                 ).fetchone()[0]
             text += f"👨‍💼 {escape(name)} — заявок: <b>{count}</b>\n"
-        await safe_edit(q, text, mk([[InlineKeyboardButton("Назад", callback_data="admin")]]))
+        await safe_edit(q, text, mk([[btn("◀️ Назад", "admin", "back")]]))
 
     elif d == "export":
         if is_admin(uid):
@@ -791,7 +792,7 @@ async def show_stats(q):
         f"✅ Завершённых: <b>{done}</b>\n"
         f"📈 Конверсия: <b>{conversion:.1f}%</b>",
         mk([[InlineKeyboardButton(
-            "Назад",
+            "◀️ Назад",
             callback_data="admin" if is_admin(q.from_user.id) else "manager"
         )]])
     )
