@@ -44,77 +44,27 @@ WEEKLY_REPORT_MINUTE = int(os.getenv("WEEKLY_REPORT_MINUTE", "5"))
 # Example:
 # EMOJI_NEW=5368324170671202286
 # EMOJI_OK=5368324170671202287
-# FULL PREMIUM EMOJI MAP — supplied by user, in exact order.
-PREMIUM_EMOJI = {
-    "welcome": "5438496463044752972",
-    "card": "5445353829304387411",
-    "money": "5287231198098117669",
-    "building": "5278702045883292456",
-    "form": "5197269100878907942",
-    "back": "5416117059207572332",
-    "cancel": "5210952531676504517",
-    "ok": "5206607081334906820",
-    "user": "5373012449597335010",
-    "manager": "5190498849440931467",
-    "contact": "5447410659077661506",
-    "name": "5373012449597335010",
-    "time": "5382194935057372936",
-    "id": "5210956306952758910",
-    "application": "5197269100878907942",
-    "bank": "5332455502917949981",
-    "new": "5382357040008021292",
-    "work": "5386367538735104399",
-    "info": "5444856076954520455",
-    "take": "5193177581888755275",
-    "open": "5379999674193172777",
-    "admin": "5217822164362739968",
-    "settings": "5341715473882955310",
-    "export": "5445355530111437729",
-    "import": "5443127283898405358",
-    "search": "5231012545799666522",
-    "decline": "5210952531676504517",
-    "chart": "5231200819986047254",
-    "my_apps": "5197269100878907942",
-    "report": "5244837092042750681",
-    "profile": "5190498849440931467",
-    "inbox": "5253742260054409879",
-    "down": "5246762912428603768",
-    "count": "5303214794336125778",
-    "date": "5274055917766202507",
-    "period": "5413879192267805083",
-    "clock": "5382194935057372936",
-    "conversion": "5310278924616356636",
-    "result": "5440539497383087970",
-    "activity": "5424972470023104089",
-    "notification": "5458603043203327669",
-    "important": "5424818078833715060",
-    "warning": "5395695537687123235",
-    "success": "5461117441612462242",
-    "action": "5456140674028019486",
-    "management": "5197371802136892976",
-    "technical": "5447644880824181073",
-    "delete": "5445267414562389170",
-    "edit": "5395444784611480792",
-    "save": "5206607081334906820",
-    "access": "5197288647275071607",
-    "locked": "5251203410396458957",
-    "link": "5271604874419647061"
-}
 CUSTOM_EMOJI = {
-    "new": PREMIUM_EMOJI["new"],
-    "ok": PREMIUM_EMOJI["ok"],
-    "work": PREMIUM_EMOJI["work"],
-    "money": PREMIUM_EMOJI["money"],
-    "chart": PREMIUM_EMOJI["chart"],
-    "user": PREMIUM_EMOJI["user"],
-    "building": PREMIUM_EMOJI["building"],
-    "card": PREMIUM_EMOJI["card"],
+    "new": os.getenv("EMOJI_NEW", "").strip(),
+    "ok": os.getenv("EMOJI_OK", "").strip(),
+    "work": os.getenv("EMOJI_WORK", "").strip(),
+    "money": os.getenv("EMOJI_MONEY", "").strip(),
+    "chart": os.getenv("EMOJI_CHART", "").strip(),
+    "user": os.getenv("EMOJI_USER", "").strip(),
+    "building": os.getenv("EMOJI_BUILDING", "").strip(),
+    "card": os.getenv("EMOJI_CARD", "").strip(),
 }
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
+PREMIUM_TEST_ID = "5438496463044752972"
+
+
+def premium_test_emoji(fallback="⭐"):
+    return f'<tg-emoji emoji-id="{escape(PREMIUM_TEST_ID)}">{escape(fallback)}</tg-emoji>'
+
 log = logging.getLogger("media_bank")
 
 PRODUCTS = {
@@ -181,10 +131,11 @@ def mk(rows):
 
 
 def custom_emoji(kind, fallback):
-    # Telegram HTML custom emoji. All supplied IDs are embedded in the bot.
-    eid = CUSTOM_EMOJI.get(kind) or PREMIUM_EMOJI.get(kind, "")
+    # HTML custom emoji syntax. Telegram ignores this only if an invalid ID is used,
+    # so the helper falls back to ordinary emoji when no ID is configured.
+    eid = CUSTOM_EMOJI.get(kind, "")
     if eid:
-        return f'<tg-emoji emoji-id="{escape(eid)}">{escape(fallback)}</tg-emoji>'
+        return f'<tg-emoji emoji-id="{escape(eid)}">{fallback}</tg-emoji>'
     return fallback
 
 
@@ -265,7 +216,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             datetime.now().isoformat(timespec="seconds")
         ))
     await update.message.reply_text(
-        custom_emoji("welcome", "👋") + " <b>Добро пожаловать в Media Bank!</b>\n\n"
+        premium_test_emoji("⭐") + " <b>Добро пожаловать в Media Bank!</b>\n\n"
         "Выберите интересующую вас услугу:",
         parse_mode=ParseMode.HTML,
         reply_markup=main_kb(u.id)
@@ -298,14 +249,14 @@ async def admin_cmd(update, context):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("⛔ Доступ только администратору.")
         return
-    await update.message.reply_text(custom_emoji("admin", "⚙️") + " <b>Админ-панель</b>", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+    await update.message.reply_text("⚙️ <b>Админ-панель</b>", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
 
 
 async def ask_name(q, context):
     context.user_data["state"] = "name"
     await safe_edit(
         q,
-        custom_emoji("form", "📝") + " <b>Заявка</b>\n\nВведите ваше имя:",
+        "📝 <b>Заявка</b>\n\nВведите ваше имя:",
         mk([[InlineKeyboardButton("◀️ В меню", callback_data="main")]])
     )
 
@@ -320,7 +271,7 @@ async def text_input(update, context):
     context.user_data["name"] = name
     context.user_data["state"] = "manager"
     await update.message.reply_text(
-        custom_emoji("manager", "👨‍💼") + " <b>Выберите менеджера:</b>",
+        "👨‍💼 <b>Выберите менеджера:</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=mk([
             [InlineKeyboardButton("Эдуард", callback_data="manager:6045840701")],
@@ -781,7 +732,7 @@ async def show_stats(q):
     conversion = done / total * 100 if total else 0
     await safe_edit(
         q,
-        fcustom_emoji("chart", "📊") + " <b>Статистика</b>\n\n"
+        f"📊 <b>Статистика</b>\n\n"
         f"Всего заявок: <b>{total}</b>\n"
         f"🆕 Новых: <b>{new}</b>\n"
         f"🔄 В работе: <b>{work}</b>\n"
