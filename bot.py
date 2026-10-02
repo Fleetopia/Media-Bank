@@ -93,6 +93,7 @@ def InlineKeyboardButton(*args, **kwargs):
             pass
     return _InlineKeyboardButton(*args, **kwargs)
 
+BOT_VERSION = "MEDIA-BANK-FIXED-2026-10-02"
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 GROUP_ID = int(os.getenv("GROUP_ID", "-1004381547715"))
 REPORT_CHAT_ID = int(os.getenv("REPORT_CHAT_ID", str(GROUP_ID)))
@@ -246,15 +247,15 @@ def custom_emoji(kind, fallback):
 
 def main_kb(uid):
     rows = [
-        [InlineKeyboardButton("💳 Дебетовая карта", callback_data="product:debit")],
-        [InlineKeyboardButton("💰 Кредитная карта", callback_data="product:credit")],
-        [InlineKeyboardButton("🏢 Регистрация бизнеса + РКО", callback_data="product:rko")],
-        [InlineKeyboardButton("📝 Оставить заявку", callback_data="start_form")],
+        [InlineKeyboardButton("Дебетовая карта", callback_data="product:debit")],
+        [InlineKeyboardButton("Кредитная карта", callback_data="product:credit")],
+        [InlineKeyboardButton("Регистрация бизнеса + РКО", callback_data="product:rko")],
+        [InlineKeyboardButton("Оставить заявку", callback_data="start_form")],
     ]
     if is_admin(uid):
-        rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin")])
+        rows.append([InlineKeyboardButton("Админ-панель", callback_data="admin")])
     elif is_manager(uid):
-        rows.append([InlineKeyboardButton("👨‍💼 Панель менеджера", callback_data="manager")])
+        rows.append([InlineKeyboardButton("Панель менеджера", callback_data="manager")])
     return mk(rows)
 
 
@@ -262,57 +263,57 @@ def bank_kb(product_key=None, back="main"):
     rows = []
     items = BANKS_BY_PRODUCT.get(product_key, [])
     for key, name in items:
-        rows.append([InlineKeyboardButton(f"🏦 {name}", callback_data=f"bank:{key}")])
-    rows.append([InlineKeyboardButton("◀️ Назад", callback_data=back)])
+        rows.append([InlineKeyboardButton(f"{name}", callback_data=f"bank:{key}")])
+    rows.append([InlineKeyboardButton("Назад", callback_data=back)])
     return mk(rows)
 
 
 def product_kb():
     return mk([
-        [InlineKeyboardButton("📝 Оставить заявку", callback_data="start_form")],
-        [InlineKeyboardButton("🏦 Выбрать банк", callback_data="choose_bank")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="main")]
+        [InlineKeyboardButton("Оставить заявку", callback_data="start_form")],
+        [InlineKeyboardButton("Выбрать банк", callback_data="choose_bank")],
+        [InlineKeyboardButton("Назад", callback_data="main")]
     ])
 
 
 def manager_kb():
     return mk([
-        [InlineKeyboardButton("🗂 Мои заявки", callback_data="my_apps")],
-        [InlineKeyboardButton("📊 Моя статистика", callback_data="my_stats")],
-        [InlineKeyboardButton("📋 Все заявки", callback_data="all_apps")],
-        [InlineKeyboardButton("📈 Отчёт за сегодня", callback_data="today_report")],
-        [InlineKeyboardButton("👤 Мой профиль", callback_data="my_profile")],
+        [InlineKeyboardButton("Мои заявки", callback_data="my_apps")],
+        [InlineKeyboardButton("Моя статистика", callback_data="my_stats")],
+        [InlineKeyboardButton("Все заявки", callback_data="all_apps")],
+        [InlineKeyboardButton("Отчёт за сегодня", callback_data="today_report")],
+        [InlineKeyboardButton("Мой профиль", callback_data="my_profile")],
         [InlineKeyboardButton("◀️ В меню", callback_data="main")]
     ])
 
 
 def admin_kb():
     return mk([
-        [InlineKeyboardButton("📋 Все заявки", callback_data="all_apps")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
-        [InlineKeyboardButton("🏦 Банки", callback_data="bank_stats")],
-        [InlineKeyboardButton("📈 Отчёт за сегодня", callback_data="today_report")],
-        [InlineKeyboardButton("👥 Менеджеры", callback_data="managers")],
-        [InlineKeyboardButton("📤 Экспорт CSV", callback_data="export")],
+        [InlineKeyboardButton("Все заявки", callback_data="all_apps")],
+        [InlineKeyboardButton("Статистика", callback_data="stats")],
+        [InlineKeyboardButton("Банки", callback_data="bank_stats")],
+        [InlineKeyboardButton("Отчёт за сегодня", callback_data="today_report")],
+        [InlineKeyboardButton("Менеджеры", callback_data="managers")],
+        [InlineKeyboardButton("Экспорт CSV", callback_data="export")],
         [InlineKeyboardButton("◀️ В меню", callback_data="main")]
     ])
 
 
 def apps_filter_kb(back):
     return mk([
-        [InlineKeyboardButton("📋 Все", callback_data="apps:all"),
-         InlineKeyboardButton("🆕 Новые", callback_data="apps:new")],
-        [InlineKeyboardButton("🔄 В работе", callback_data="apps:in_work"),
-         InlineKeyboardButton("✅ Завершённые", callback_data="apps:completed")],
-        [InlineKeyboardButton("◀️ Назад", callback_data=back)]
+        [InlineKeyboardButton("Все", callback_data="apps:all"),
+         InlineKeyboardButton("Новые", callback_data="apps:new")],
+        [InlineKeyboardButton("В работе", callback_data="apps:in_work"),
+         InlineKeyboardButton("Завершённые", callback_data="apps:completed")],
+        [InlineKeyboardButton("Назад", callback_data=back)]
     ])
 
 
 def manager_profile_kb():
     return mk([
-        [InlineKeyboardButton("🗂 Мои заявки", callback_data="my_apps")],
-        [InlineKeyboardButton("📊 Моя статистика", callback_data="my_stats")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="manager")]
+        [InlineKeyboardButton("Мои заявки", callback_data="my_apps")],
+        [InlineKeyboardButton("Моя статистика", callback_data="my_stats")],
+        [InlineKeyboardButton("Назад", callback_data="manager")]
     ])
 
 
@@ -322,7 +323,7 @@ def app_actions(app_id, status):
         rows.append([InlineKeyboardButton("👤 Взять в работу", callback_data=f"take:{app_id}")])
     elif status == "in_work":
         rows.append([InlineKeyboardButton("✅ Завершить", callback_data=f"complete:{app_id}")])
-    rows.append([InlineKeyboardButton("🔎 Открыть", callback_data=f"view:{app_id}")])
+    rows.append([InlineKeyboardButton("Открыть", callback_data=f"view:{app_id}")])
     return mk(rows)
 
 
@@ -351,7 +352,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             datetime.now().isoformat(timespec="seconds")
         ))
     await update.message.reply_text(
-        "👋 <b>Добро пожаловать в Media Bank!</b>\n\n"
+        "<b>Media Bank — новая версия</b>\n\n"
         "Выберите интересующую вас услугу:",
         parse_mode=ParseMode.HTML,
         reply_markup=main_kb(u.id)
@@ -799,9 +800,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif d == "start_form":
         if not context.user_data.get("product") or context.user_data.get("product") == "Не указано":
             await safe_edit(q, "📝 <b>Заявка</b>\n\nСначала выберите услугу:", mk([
-                [InlineKeyboardButton("💳 Дебетовая карта", callback_data="product:debit")],
-                [InlineKeyboardButton("💰 Кредитная карта", callback_data="product:credit")],
-                [InlineKeyboardButton("🏢 Регистрация бизнеса + РКО", callback_data="product:rko")],
+                [InlineKeyboardButton("Дебетовая карта", callback_data="product:debit")],
+                [InlineKeyboardButton("Кредитная карта", callback_data="product:credit")],
+                [InlineKeyboardButton("Регистрация бизнеса + РКО", callback_data="product:rko")],
                 [InlineKeyboardButton("◀️ В меню", callback_data="main")]
             ]))
             return
@@ -828,7 +829,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Всё верно?",
             mk([
                 [InlineKeyboardButton("✅ Отправить", callback_data="send_app")],
-                [InlineKeyboardButton("◀️ Назад", callback_data="start_form")]
+                [InlineKeyboardButton("Назад", callback_data="start_form")]
             ])
         )
 
@@ -864,13 +865,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sql="SELECT id,name,product,bank,manager_name,status FROM applications WHERE status=? ORDER BY id DESC LIMIT 50"
             with db() as c: rows=c.execute(sql,(status,)).fetchall()
             if not rows:
-                await safe_edit(q,"📋 <b>Заявок нет.</b>",mk([[InlineKeyboardButton("◀️ Назад",callback_data="admin" if is_admin(uid) else "manager")]])); return
+                await safe_edit(q,"📋 <b>Заявок нет.</b>",mk([[InlineKeyboardButton("Назад",callback_data="admin" if is_admin(uid) else "manager")]])); return
             symbols={"new":"🆕","in_work":"🔄","completed":"✅"}
             text="📋 <b>Заявки</b>\n\n"; buttons=[]
             for aid,name,product,bank,mgr,st in rows:
                 text += f"{symbols.get(st,'•')} <b>#{aid}</b> — {escape(name)} — {escape(product)} — 🏦 {escape(bank or 'Другой / не указан')}\n"
                 buttons.append([InlineKeyboardButton(f"🔎 Открыть #{aid}",callback_data=f"view:{aid}")])
-            buttons.append([InlineKeyboardButton("◀️ Назад",callback_data="admin" if is_admin(uid) else "manager")])
+            buttons.append([InlineKeyboardButton("Назад",callback_data="admin" if is_admin(uid) else "manager")])
             await safe_edit(q,text,mk(buttons))
 
     elif d == "my_apps":
@@ -918,7 +919,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buttons=[]
         for mid,name in MANAGERS.items():
             buttons.append([InlineKeyboardButton(f"📊 {name}", callback_data=f"manager_stats:{mid}")])
-        buttons.append([InlineKeyboardButton("◀️ Назад", callback_data="admin")])
+        buttons.append([InlineKeyboardButton("Назад", callback_data="admin")])
         await safe_edit(q, text, mk(buttons))
 
     elif d.startswith("manager_stats:"):
@@ -1009,7 +1010,7 @@ async def show_manager_stats(q, manager_id=None):
     if banks:
         text += "\n\n<b>🏦 По банкам:</b>\n" + "".join(f"• {escape(b)} — <b>{n}</b> / <b>{d or 0}</b> завершено\n" for b,n,d in banks)
     back='admin' if is_admin(uid) else 'manager'
-    await safe_edit(q, text, mk([[InlineKeyboardButton("◀️ Назад",callback_data=back)]]))
+    await safe_edit(q, text, mk([[InlineKeyboardButton("Назад",callback_data=back)]]))
 
 
 async def show_manager_profile(q):
@@ -1062,7 +1063,7 @@ async def show_bank_stats(q):
                 current=bank
                 text += f"<b>🏦 {escape(bank)}</b>\n"
             text += f"  • {escape(product)} — <b>{total}</b> всего | 🆕 {new or 0} | 🔄 {work or 0} | ✅ <b>{done or 0}</b>\n"
-    await safe_edit(q,text,mk([[InlineKeyboardButton("◀️ Назад",callback_data="admin")]]))
+    await safe_edit(q,text,mk([[InlineKeyboardButton("Назад",callback_data="admin")]]))
 
 
 async def show_stats(q):
@@ -1086,7 +1087,7 @@ async def show_stats(q):
         text += "\n<b>По менеджерам:</b>\n" + "".join(f"• {escape(m)} — <b>{n}</b>\n" for m,n in managers)
     await safe_edit(q,text,mk([
         [InlineKeyboardButton("🏦 Детально по банкам",callback_data="bank_stats")],
-        [InlineKeyboardButton("◀️ Назад",callback_data="admin" if is_admin(q.from_user.id) else "manager")]
+        [InlineKeyboardButton("Назад",callback_data="admin" if is_admin(q.from_user.id) else "manager")]
     ]))
 
 
