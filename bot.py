@@ -1,13 +1,12 @@
 import logging
 import os
-import re
 import sqlite3
 from datetime import datetime, timedelta, time
 from html import escape
 
 from dotenv import load_dotenv
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup,
+    Update, InlineKeyboardButton as _InlineKeyboardButton, InlineKeyboardMarkup,
     BotCommand, BotCommandScopeAllPrivateChats, InputFile
 )
 from telegram.constants import ParseMode
@@ -20,11 +19,85 @@ from telegram.request import HTTPXRequest
 
 load_dotenv()
 
+# Native Telegram Premium/Custom Emoji icons for inline keyboard buttons.
+# PTB 22.7+ supports icon_custom_emoji_id. If an older PTB is present,
+# the wrapper safely falls back to a normal button instead of crashing.
+PREMIUM_BUTTONS = {
+    "debit": "5445353829304387411",
+    "credit": "5287231198098117669",
+    "rko": "5278702045883292456",
+    "form": "5210952531676504517",
+    "back": "5197269100878907942",
+    "cancel": "5253742260054409879",
+    "send": "5206607081334906820",
+    "manager": "5373012449597335010",
+    "user": "5190498849440931467",
+    "apps": "5447410659077661506",
+    "stats": "5231200819986047254",
+    "report": "5244837092042750681",
+    "admin": "5217822164362739968",
+    "new": "5382357040008021292",
+    "work": "5386367538735104399",
+    "done": "5206607081334906820",
+    "open": "5193177581888755275",
+    "search": "5379999674193172777",
+    "export": "5444856076954520455",
+    "bank": "5332455502917949981",
+    "team": "5445355530111437729",
+    "settings": "5443127283898405358",
+    "notification": "5231012545799666522",
+    "service": "5246762912428603768",
+    "time": "5303214794336125778",
+    "info": "5274055917766202507",
+    "help": "5413879192267805083",
+}
+
+def _button_kind(text):
+    s = str(text)
+    if "Дебетовая" in s: return "debit"
+    if "Кредитная" in s: return "credit"
+    if "РКО" in s or "Регистрация бизнеса" in s: return "rko"
+    if "Оставить заявку" in s or "Продолжить заявку" in s: return "form"
+    if "Назад" in s or "В меню" in s: return "back"
+    if "Отправить" in s: return "send"
+    if "Менеджер" in s or "Мой профиль" in s: return "manager"
+    if "Все заявки" in s or "Мои заявки" in s or "Заявок" in s: return "apps"
+    if "Статист" in s: return "stats"
+    if "Отчёт" in s or "Отчет" in s: return "report"
+    if "Админ" in s or "Панель" in s: return "admin"
+    if "Новые" in s or "Новая" in s: return "new"
+    if "В работе" in s: return "work"
+    if "Заверш" in s or "Готов" in s: return "done"
+    if "Открыть" in s: return "open"
+    if "Поиск" in s: return "search"
+    if "Экспорт" in s: return "export"
+    if "Банк" in s or "банка" in s: return "bank"
+    if "Помощь" in s: return "help"
+    if "Уведом" in s: return "notification"
+    if "Сервис" in s: return "service"
+    if "Отмена" in s: return "cancel"
+    return None
+
+def InlineKeyboardButton(*args, **kwargs):
+    kind = kwargs.pop("_premium_kind", None)
+    if kind is None and args:
+        kind = _button_kind(args[0])
+    if kind is None:
+        kind = _button_kind(kwargs.get("text", ""))
+    emoji_id = PREMIUM_BUTTONS.get(kind or "")
+    if emoji_id:
+        try:
+            return _InlineKeyboardButton(*args, icon_custom_emoji_id=emoji_id, **kwargs)
+        except TypeError:
+            # Older python-telegram-bot: keep the bot functional.
+            pass
+    return _InlineKeyboardButton(*args, **kwargs)
+
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 GROUP_ID = int(os.getenv("GROUP_ID", "-1004381547715"))
 REPORT_CHAT_ID = int(os.getenv("REPORT_CHAT_ID", str(GROUP_ID)))
-PROXY = os.getenv("PROXY", "").strip()
-DB_FILE = "/data/media_bank.db" if os.path.isdir("/data") else "media_bank.db"
+PROXY = os.getenv("PROXY", os.getenv("PROXY_URL", "")).strip()
+DB_FILE = "media_bank.db"
 
 # Manager IDs used in the project.
 MANAGERS = {
@@ -163,145 +236,93 @@ def mk(rows):
 
 
 def custom_emoji(kind, fallback):
+    # HTML custom emoji syntax. Telegram ignores this only if an invalid ID is used,
+    # so the helper falls back to ordinary emoji when no ID is configured.
     eid = CUSTOM_EMOJI.get(kind, "")
     if eid:
-        return f'<tg-emoji emoji-id="{escape(eid)}">{escape(fallback)}</tg-emoji>'
+        return f'<tg-emoji emoji-id="{escape(eid)}">{fallback}</tg-emoji>'
     return fallback
-
-# User-supplied Premium Emoji IDs, assigned to the UI meaning they represent.
-# These are used for button icons and message text. The original 90 IDs are kept intact.
-PREMIUM = {
-    "welcome": "5438496463044752972",
-    "debit": "5445353829304387411",
-    "credit": "5287231198098117669",
-    "rko": "5278702045883292456",
-    "form": "5197269100878907942",
-    "back": "5416117059207572332",
-    "edit": "5210952531676504517",
-    "send": "5206607081334906820",
-    "manager": "5373012449597335010",
-    "user": "5190498849440931467",
-    "applications": "5447410659077661506",
-    "client": "5373012449597335010",
-    "bank": "5332455502917949981",
-    "card": "5445353829304387411",
-    "money": "5287231198098117669",
-    "building": "5278702045883292456",
-    "cancel": "5253742260054409879",
-    "new": "5382357040008021292",
-    "work": "5386367538735104399",
-    "done": "5206607081334906820",
-    "open": "5193177581888755275",
-    "search": "5379999674193172777",
-    "stats": "5231200819986047254",
-    "report": "5244837092042750681",
-    "admin": "5217822164362739968",
-    "export": "5444856076954520455",
-    "team": "5445355530111437729",
-    "settings": "5443127283898405358",
-    "notification": "5231012545799666522",
-    "service": "5246762912428603768",
-    "time": "5303214794336125778",
-    "info": "5274055917766202507",
-    "help": "5413879192267805083",
-    "success": "5206607081334906820",
-    "refresh": "5253742260054409879",
-}
-
-def pe(kind, fallback):
-    eid = PREMIUM.get(kind, "")
-    if eid:
-        return f'<tg-emoji emoji-id="{escape(eid)}">{escape(fallback)}</tg-emoji>'
-    return fallback
-
-def button(text, callback_data, kind):
-    # InlineKeyboardButton supports native custom-emoji icons in PTB 22.7+.
-    # Strip normal emoji from the visible label; the Premium icon is supplied separately.
-    text = re.sub(r'^[^A-Za-zА-Яа-я0-9]+', '', text).strip()
-    return InlineKeyboardButton(
-        text=text,
-        callback_data=callback_data,
-        icon_custom_emoji_id=PREMIUM.get(kind)
-    )
 
 
 def main_kb(uid):
     rows = [
-        [button("💳 Дебетовая карта", "product:debit", "debit")],
-        [button("💰 Кредитная карта", "product:credit", "credit")],
-        [button("🏢 Регистрация бизнеса + РКО", "product:rko", "rko")],
-        [button("📝 Оставить заявку", "start_form", "form")],
+        [InlineKeyboardButton("💳 Дебетовая карта", callback_data="product:debit")],
+        [InlineKeyboardButton("💰 Кредитная карта", callback_data="product:credit")],
+        [InlineKeyboardButton("🏢 Регистрация бизнеса + РКО", callback_data="product:rko")],
+        [InlineKeyboardButton("📝 Оставить заявку", callback_data="start_form")],
     ]
     if is_admin(uid):
-        rows.append([button("⚙️ Админ-панель", "admin", "admin")])
+        rows.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data="admin")])
     elif is_manager(uid):
-        rows.append([button("👨‍💼 Панель менеджера", "manager", "manager")])
+        rows.append([InlineKeyboardButton("👨‍💼 Панель менеджера", callback_data="manager")])
     return mk(rows)
 
 
 def bank_kb(product_key=None, back="main"):
-    rows=[]
-    for key,name in BANKS_BY_PRODUCT.get(product_key, []):
-        rows.append([button(f"🏦 {name}", f"bank:{key}", "bank")])
-    rows.append([button("◀️ Назад", back, "back")])
+    rows = []
+    items = BANKS_BY_PRODUCT.get(product_key, [])
+    for key, name in items:
+        rows.append([InlineKeyboardButton(f"🏦 {name}", callback_data=f"bank:{key}")])
+    rows.append([InlineKeyboardButton("◀️ Назад", callback_data=back)])
     return mk(rows)
 
 
-def product_kb(product_key=None):
-    rows = [
-        [button("📝 Оставить заявку", "start_form", "form")],
-        [button("🏦 Выбрать банк", "choose_bank", "bank")],
-        [button("◀️ Назад", "main", "back")],
-    ]
-    return mk(rows)
+def product_kb():
+    return mk([
+        [InlineKeyboardButton("📝 Оставить заявку", callback_data="start_form")],
+        [InlineKeyboardButton("🏦 Выбрать банк", callback_data="choose_bank")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="main")]
+    ])
 
 
 def manager_kb():
     return mk([
-        [button("🗂 Мои заявки", "my_apps", "applications")],
-        [button("📊 Моя статистика", "my_stats", "stats")],
-        [button("📋 Все заявки", "all_apps", "applications")],
-        [button("📈 Отчёт за сегодня", "today_report", "report")],
-        [button("👤 Мой профиль", "my_profile", "user")],
-        [button("◀️ В меню", "main", "back")]
+        [InlineKeyboardButton("🗂 Мои заявки", callback_data="my_apps")],
+        [InlineKeyboardButton("📊 Моя статистика", callback_data="my_stats")],
+        [InlineKeyboardButton("📋 Все заявки", callback_data="all_apps")],
+        [InlineKeyboardButton("📈 Отчёт за сегодня", callback_data="today_report")],
+        [InlineKeyboardButton("👤 Мой профиль", callback_data="my_profile")],
+        [InlineKeyboardButton("◀️ В меню", callback_data="main")]
     ])
 
 
 def admin_kb():
     return mk([
-        [button("📋 Все заявки", "all_apps", "applications")],
-        [button("📊 Статистика", "stats", "stats")],
-        [button("🏦 Банки", "bank_stats", "bank")],
-        [button("📈 Отчёт за сегодня", "today_report", "report")],
-        [button("👥 Менеджеры", "managers", "team")],
-        [button("📤 Экспорт CSV", "export", "export")],
-        [button("◀️ В меню", "main", "back")]
+        [InlineKeyboardButton("📋 Все заявки", callback_data="all_apps")],
+        [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
+        [InlineKeyboardButton("🏦 Банки", callback_data="bank_stats")],
+        [InlineKeyboardButton("📈 Отчёт за сегодня", callback_data="today_report")],
+        [InlineKeyboardButton("👥 Менеджеры", callback_data="managers")],
+        [InlineKeyboardButton("📤 Экспорт CSV", callback_data="export")],
+        [InlineKeyboardButton("◀️ В меню", callback_data="main")]
     ])
 
 
 def apps_filter_kb(back):
     return mk([
-        [button("📋 Все", "apps:all", "applications"), button("🆕 Новые", "apps:new", "new")],
-        [button("🔄 В работе", "apps:in_work", "work"), button("✅ Завершённые", "apps:completed", "done")],
-        [button("◀️ Назад", back, "back")]
+        [InlineKeyboardButton("📋 Все", callback_data="apps:all"),
+         InlineKeyboardButton("🆕 Новые", callback_data="apps:new")],
+        [InlineKeyboardButton("🔄 В работе", callback_data="apps:in_work"),
+         InlineKeyboardButton("✅ Завершённые", callback_data="apps:completed")],
+        [InlineKeyboardButton("◀️ Назад", callback_data=back)]
     ])
 
 
 def manager_profile_kb():
     return mk([
-        [button("🗂 Мои заявки", "my_apps", "applications")],
-        [button("📊 Моя статистика", "my_stats", "stats")],
-        [button("◀️ Назад", "manager", "back")]
+        [InlineKeyboardButton("🗂 Мои заявки", callback_data="my_apps")],
+        [InlineKeyboardButton("📊 Моя статистика", callback_data="my_stats")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="manager")]
     ])
 
 
 def app_actions(app_id, status):
-    rows=[]
+    rows = []
     if status == "new":
-        rows.append([button("👤 Взять в работу", f"take:{app_id}", "work")])
+        rows.append([InlineKeyboardButton("👤 Взять в работу", callback_data=f"take:{app_id}")])
     elif status == "in_work":
-        rows.append([button("✅ Завершить", f"complete:{app_id}", "done")])
-    rows.append([button("🔎 Открыть", f"view:{app_id}", "open")])
+        rows.append([InlineKeyboardButton("✅ Завершить", callback_data=f"complete:{app_id}")])
+    rows.append([InlineKeyboardButton("🔎 Открыть", callback_data=f"view:{app_id}")])
     return mk(rows)
 
 
@@ -330,8 +351,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             datetime.now().isoformat(timespec="seconds")
         ))
     await update.message.reply_text(
-        f"{pe('welcome', '👋')} <b>Добро пожаловать в Media Bank!</b>\n\n"
-        "Выберите интересующую вас услугу.\n\n<b>Media Bank • PREMIUM v2</b>",
+        "👋 <b>Добро пожаловать в Media Bank!</b>\n\n"
+        "Выберите интересующую вас услугу:",
         parse_mode=ParseMode.HTML,
         reply_markup=main_kb(u.id)
     )
@@ -370,7 +391,7 @@ async def ask_name(q, context):
     context.user_data["state"] = "name"
     await safe_edit(
         q,
-        f"{pe('form', '📝')} <b>Заявка</b>\n\nВведите ваше имя:",
+        "📝 <b>Заявка</b>\n\nВведите ваше имя:",
         mk([[InlineKeyboardButton("◀️ В меню", callback_data="main")]])
     )
 
@@ -385,7 +406,7 @@ async def text_input(update, context):
     context.user_data["name"] = name
     context.user_data["state"] = "manager"
     await update.message.reply_text(
-        f"{pe('manager', '👨‍💼')} <b>Выберите менеджера:</b>",
+        "👨‍💼 <b>Выберите менеджера:</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=mk([
             [InlineKeyboardButton("Эдуард", callback_data="manager:6045840701")],
@@ -732,7 +753,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if d == "main":
         context.user_data.clear()
-        await safe_edit(q, f"{pe('welcome', '👋')} <b>Media Bank</b>\n\nВыберите услугу:", main_kb(uid))
+        await safe_edit(q, "👋 <b>Media Bank</b>\n\nВыберите услугу:", main_kb(uid))
 
     elif d.startswith("product:"):
         key = d.split(":", 1)[1]
@@ -742,13 +763,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("bank", None)
         await safe_edit(
             q,
-            f"{pe('service', '✨')} <b>{escape(title)}</b>\n\n{escape(description)}\n\n{pe('bank', '🏦')} <b>Выберите банк:</b>",
+            f"✨ <b>{escape(title)}</b>\n\n{escape(description)}\n\n🏦 <b>Выберите банк:</b>",
             bank_kb(key, "main")
         )
 
     elif d == "choose_bank":
         product_key = context.user_data.get("product_key")
-        await safe_edit(q, f"{pe('bank', '🏦')} <b>Выберите банк</b>", bank_kb(product_key, "main"))
+        await safe_edit(q, "🏦 <b>Выберите банк</b>", bank_kb(product_key, "main"))
 
     elif d.startswith("bank:"):
         key = d.split(":", 1)[1]
@@ -798,12 +819,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = q.from_user.username or ""
         await safe_edit(
             q,
-            f"{pe('open', '🔎')} <b>Проверьте заявку</b>\n\n"
-            f"{pe('user', '👤')} Имя: {name}\n"
+            f"🔎 <b>Проверьте заявку</b>\n\n"
+            f"👤 Имя: {name}\n"
             f"📱 Telegram: @{escape(username) if username else 'нет'}\n"
             f"🛍 Услуга: {product}\n"
-            f"{pe('bank', '🏦')} Банк: {bank}\n"
-            f"{pe('manager', '👨‍💼')} Менеджер: {escape(MANAGERS[mid])}\n\n"
+            f"🏦 Банк: {bank}\n"
+            f"👨‍💼 Менеджер: {escape(MANAGERS[mid])}\n\n"
             "Всё верно?",
             mk([
                 [InlineKeyboardButton("✅ Отправить", callback_data="send_app")],
@@ -1189,7 +1210,7 @@ def main():
     app.add_error_handler(error_handler)
 
     print("======================================")
-    print(" MEDIA BANK — ULTIMATE FRESH BUILD")
+    print(" MEDIA BANK — FINAL STABLE + PREMIUM BANKS v3")
     print(" Auto reports: enabled")
     print(" Premium/custom emoji: configurable")
     print("======================================")
