@@ -1,1354 +1,290 @@
-import os
-import csv
-import io
-import sqlite3
-import logging
-import shutil
+import os, csv, io, sqlite3, logging
 from datetime import datetime, timezone
 from html import escape
-
 from dotenv import load_dotenv
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    BotCommand,
-    MenuButtonCommands,
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, MenuButtonCommands
 from telegram.constants import ParseMode
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
-
-# ============================================================
-# MEDIA BANK — CLEAN REBUILD
-# Telegram bot / заявки / менеджеры / статистика / отчёты
-# ============================================================
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 load_dotenv()
+BOT_TOKEN=os.getenv('BOT_TOKEN','').strip(); GROUP_ID=int(os.getenv('GROUP_ID','0')); REPORT_CHAT_ID=int(os.getenv('REPORT_CHAT_ID',str(GROUP_ID)))
+DB_FILE=os.getenv('DB_FILE','/data/media_bank.db' if os.path.isdir('/data') else 'media_bank.db'); ENABLE_BUTTON_PREMIUM=os.getenv('ENABLE_BUTTON_PREMIUM','1')=='1'
+DAILY_REPORT_HOUR=int(os.getenv('DAILY_REPORT_HOUR','21')); DAILY_REPORT_MINUTE=int(os.getenv('DAILY_REPORT_MINUTE','0'))
+WEEKLY_REPORT_DAY=int(os.getenv('WEEKLY_REPORT_DAY','0')); WEEKLY_REPORT_HOUR=int(os.getenv('WEEKLY_REPORT_HOUR','21')); WEEKLY_REPORT_MINUTE=int(os.getenv('WEEKLY_REPORT_MINUTE','5'))
+ADMIN_IDS={6045840701}; MANAGERS={6045840701:'Эдуард',8923153510:'Александр'}
+BANKS={'debit':['Т-Банк','Альфа-Банк','ВТБ-Банк','Промсвязьбанк','Ак Барс Банк','ОТП банк'],'credit':['Т-Банк','ВТБ','Уралсиб','ОТП-Банк','Яндекс — Кредитная карта супер Сплит','Альфа-Банк'],'rko':['Альфа-Банк','Промсвязьбанк','РКО от Санкт-Петербург Банка','УБРиР Банк']}
+PRODUCTS={'debit':'Дебетовая карта','credit':'Кредитная карта','rko':'Регистрация бизнеса + РКО'}
+EMOJI_IDS='5438496463044752972,5445353829304387411,5287231198098117669,5278702045883292456,5197269100878907942,5416117059207572332,5210952531676504517,5206607081334906820,5373012449597335010,5190498849440931467,5447410659077661506,5373012449597335010,5382194935057372936,5210956306952758910,5197269100878907942,5332455502917949981,5445353829304387411,5287231198098117669,5278702045883292456,5253742260054409879,5382357040008021292,5386367538735104399,5206607081334906820,5444856076954520455,5193177581888755275,5379999674193172777,5206607081334906820,5210952531676504517,5190498849440931467,5231200819986047254,5197269100878907942,5244837092042750681,5190498849440931467,5386367538735104399,5206607081334906820,5253742260054409879,5217822164362739968,5341715473882955310,5231200819986047254,5244837092042750681,5197269100878907942,5382357040008021292,5386367538735104399,5206607081334906820,5190498849440931467,5445355530111437729,5443127283898405358,5231012545799666522,5231200819986047254,5244837092042750681,5246762912428603768,5303214794336125778,5274055917766202507,5413879192267805083,5382194935057372936,5382194935057372936,5287231198098117669,5310278924616356636,5440539497383087970,5424972470023104089,5244837092042750681,5231200819986047254,5413879192267805083,5274055917766202507,5274055917766202507,5444856076954520455,5382357040008021292,5386367538735104399,5206607081334906820,5190498849440931467,5445353829304387411,5287231198098117669,5278702045883292456,5332455502917949981,5458603043203327669,5424818078833715060,5395695537687123235,5461117441612462242,5456140674028019486,5424972470023104089,5341715473882955310,5197371802136892976,5447644880824181073,5445267414562389170,5395444784611480792,5206607081334906820,5197288647275071607,5251203410396458957,5197288647275071607,5271604874419647061'.split(',')
+E={'welcome':0,'debit':1,'credit':2,'rko':3,'form':4,'review':6,'back':5,'send':7,'manager':9,'manager_select':9,'manager_admin':9,'user':8,'apps':4,'apps_all':4,'edit':4,'cancel':5,'new':20,'work':21,'done':22,'open':23,'search':25,'admin':36,'stats':38,'report':39,'export':65,'bank':15}
+BOT_VERSION='MEDIA-BANK-PREMIUM-REVIEW-FIX-6.0'
+# Requested Premium Emoji mapping: all-applications=5197269100878907942; back/cancel=5416117059207572332; managers=5190498849440931467; client name/Telegram=5373012449597335010.
+# Premium UI: dedicated IDs for review, manager selection, all-applications, and admin managers.
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-GROUP_ID = int(os.getenv("GROUP_ID", "0"))
-REPORT_CHAT_ID = int(os.getenv("REPORT_CHAT_ID", str(GROUP_ID)))
-DB_FILE = os.getenv("DB_FILE", "media_bank.db")
+logging.basicConfig(format='%(asctime)s | %(levelname)s | %(message)s',level=logging.INFO); log=logging.getLogger('media_bank')
+def emoji(k,f='•'):
+    if k not in E:
+        return escape(f)
+    return f'<tg-emoji emoji-id="{escape(EMOJI_IDS[E[k]])}">{escape(f)}</tg-emoji>'
 
-# Premium button icons:
-# 1 / true / yes / on = enabled
-ENABLE_BUTTON_PREMIUM = os.getenv(
-    "ENABLE_BUTTON_PREMIUM", "1"
-).strip().lower() in {"1", "true", "yes", "on"}
-
-DAILY_REPORT_HOUR = int(os.getenv("DAILY_REPORT_HOUR", "21"))
-DAILY_REPORT_MINUTE = int(os.getenv("DAILY_REPORT_MINUTE", "0"))
-WEEKLY_REPORT_DAY = int(os.getenv("WEEKLY_REPORT_DAY", "0"))
-WEEKLY_REPORT_HOUR = int(os.getenv("WEEKLY_REPORT_HOUR", "21"))
-WEEKLY_REPORT_MINUTE = int(os.getenv("WEEKLY_REPORT_MINUTE", "5"))
-
-ADMIN_IDS = {6045840701}
-
-MANAGERS = {
-    6045840701: "Эдуард",
-    8923153510: "Александр",
+# Review screen: use dedicated Premium Emoji IDs from the user's 90-ID set.
+REVIEW_EMOJI = {
+    'title': '5197269100878907942',
+    'product_debit': '5445353829304387411',
+    'product_credit': '5287231198098117669',
+    'product_rko': '5278702045883292456',
+    'bank': '5332455502917949981',
+    'client': '5373012449597335010',
+    'manager': '5190498849440931467',
 }
+def review_emoji(kind, fallback='•'):
+    eid = REVIEW_EMOJI[kind]
+    return f'<tg-emoji emoji-id=\"{eid}\">{escape(fallback)}</tg-emoji>'
 
-PRODUCTS = {
-    "debit": "Дебетовая карта",
-    "credit": "Кредитная карта",
-    "rko": "Регистрация бизнеса + РКО",
-}
+def strip_custom_emoji(text):
+    import re
+    return re.sub(r'<tg-emoji\s+emoji-id="[^"]+">(.*?)</tg-emoji>', r'\1', text, flags=re.S)
 
-BANKS = {
-    "debit": [
-        "Т-Банк",
-        "Альфа-Банк",
-        "ВТБ-Банк",
-        "Промсвязьбанк",
-        "Ак Барс Банк",
-        "ОТП банк",
-    ],
-    "credit": [
-        "Т-Банк",
-        "ВТБ",
-        "Уралсиб",
-        "ОТП-Банк",
-        "Яндекс — Кредитная карта супер Сплит",
-        "Альфа-Банк",
-    ],
-    "rko": [
-        "Альфа-Банк",
-        "Промсвязьбанк",
-        "РКО от Санкт-Петербург Банка",
-        "УБРиР Банк",
-    ],
-}
-
-# ============================================================
-# ВАЖНЫЕ CUSTOM EMOJI ID
-# ============================================================
-
-EMOJI = {
-    # Review screen — закреплено по запросу
-    "review": "5197269100878907942",
-    "debit": "5445353829304387411",
-    "credit": "5287231198098117669",
-    "rko": "5278702045883292456",
-    "bank": "5332455502917949981",
-
-    # Имя / Telegram
-    "user": "5373012449597335010",
-
-    # Менеджер
-    "manager": "5190498849440931467",
-
-    # Остальные уже использовавшиеся ID
-    "welcome": "5438496463044752972",
-    "back": "5206607081334906820",
-    "send": "5206607081334906820",
-    "edit": "5382194935057372936",
-    "cancel": "5253742260054409879",
-    "new": "5382357040008021292",
-    "work": "5386367538735104399",
-    "done": "5206607081334906820",
-    "open": "5190498849440931467",
-    "apps": "5444856076954520455",
-    "admin": "5190498849440931467",
-    "stats": "5206607081334906820",
-    "report": "5190498849440931467",
-    "export": "5274055917766202507",
-}
-
-# Отдельная карта именно для INLINE-КНОПОК.
-# Здесь больше нет зависимости от старого массива индексов.
-BUTTON_ICONS = {
-    "debit": EMOJI["debit"],
-    "credit": EMOJI["credit"],
-    "rko": EMOJI["rko"],
-    "form": EMOJI["review"],
-    "review": EMOJI["review"],
-    "bank": EMOJI["bank"],
-    "manager": EMOJI["manager"],
-    "user": EMOJI["user"],
-    "back": EMOJI["back"],
-    "send": EMOJI["send"],
-    "edit": EMOJI["edit"],
-    "cancel": EMOJI["cancel"],
-    "new": EMOJI["new"],
-    "work": EMOJI["work"],
-    "done": EMOJI["done"],
-    "open": EMOJI["open"],
-    "apps": EMOJI["apps"],
-    "admin": EMOJI["admin"],
-    "stats": EMOJI["stats"],
-    "report": EMOJI["report"],
-    "export": EMOJI["export"],
-}
-
-logging.basicConfig(
-    format="%(asctime)s | %(levelname)s | %(message)s",
-    level=logging.INFO,
-)
-log = logging.getLogger("media_bank")
-
-
-# ============================================================
-# HELPERS
-# ============================================================
-
-def now():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-
-def emoji(key, fallback="•"):
-    eid = EMOJI.get(key)
-    if not eid:
-        return escape(fallback)
-    return f'<tg-emoji emoji-id="{eid}">{escape(fallback)}</tg-emoji>'
-
-
-def btn(text, key=None, data=None):
-    kwargs = {
-        "text": text,
-        "callback_data": data,
-    }
-
-    # Premium icon перед текстом кнопки.
-    # Если Telegram не даёт показать иконку из-за ограничений
-    # аккаунта владельца бота, сама кнопка всё равно работает.
-    if ENABLE_BUTTON_PREMIUM and key in BUTTON_ICONS:
-        kwargs["icon_custom_emoji_id"] = BUTTON_ICONS[key]
-
-    return InlineKeyboardButton(**kwargs)
-
-
-def db():
-    return sqlite3.connect(DB_FILE)
-
-
-# ============================================================
-# DATABASE
-# ============================================================
-
+def btn(text,k=None,data=None):
+    overrides={'edit':'5197269100878907942','back':'5416117059207572332','cancel':'5416117059207572332','apps_all':'5197269100878907942','manager_admin':'5190498849440931467'}
+    icon = overrides.get(k, EMOJI_IDS[E[k]] if k in E else None) if ENABLE_BUTTON_PREMIUM else None
+    return InlineKeyboardButton(text, callback_data=data, icon_custom_emoji_id=icon)
+def db(): return sqlite3.connect(DB_FILE)
 def init_db():
-    directory = os.path.dirname(os.path.abspath(DB_FILE))
-    os.makedirs(directory, exist_ok=True)
-
+    d=os.path.dirname(os.path.abspath(DB_FILE)); os.makedirs(d,exist_ok=True)
     with db() as c:
-        c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS applications(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT NOT NULL,
-                user_id INTEGER NOT NULL,
-                username TEXT,
-                product TEXT NOT NULL,
-                bank TEXT NOT NULL,
-                client_name TEXT NOT NULL,
-                contact TEXT NOT NULL,
-                manager TEXT NOT NULL,
-                manager_id INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'new',
-                taken_at TEXT,
-                completed_at TEXT
-            )
-            """
-        )
-
-        c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users(
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                first_seen TEXT NOT NULL
-            )
-            """
-        )
-
-        # Безопасные миграции старых баз.
-        app_cols = {
-            row[1]
-            for row in c.execute("PRAGMA table_info(applications)").fetchall()
-        }
-
-        migrations = {
-            "manager_id": "ALTER TABLE applications ADD COLUMN manager_id INTEGER DEFAULT 0",
-            "status": "ALTER TABLE applications ADD COLUMN status TEXT DEFAULT 'new'",
-            "taken_at": "ALTER TABLE applications ADD COLUMN taken_at TEXT",
-            "completed_at": "ALTER TABLE applications ADD COLUMN completed_at TEXT",
-        }
-
-        for col, sql in migrations.items():
-            if col not in app_cols:
-                c.execute(sql)
-
-        user_cols = {
-            row[1]
-            for row in c.execute("PRAGMA table_info(users)").fetchall()
-        }
-
-        if "first_seen" not in user_cols:
-            c.execute("ALTER TABLE users ADD COLUMN first_seen TEXT")
-            c.execute(
-                "UPDATE users SET first_seen=? WHERE first_seen IS NULL",
-                (now(),),
-            )
-
-        c.commit()
-
-
-def backup_database():
-    if not os.path.exists(DB_FILE):
-        return
-
-    backup_dir = os.path.join(
-        os.path.dirname(os.path.abspath(DB_FILE)),
-        "backups",
-    )
-    os.makedirs(backup_dir, exist_ok=True)
-
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    destination = os.path.join(
-        backup_dir,
-        f"media_bank_{stamp}.db",
-    )
-
-    try:
-        shutil.copy2(DB_FILE, destination)
-
-        files = sorted(
-            [
-                os.path.join(backup_dir, x)
-                for x in os.listdir(backup_dir)
-                if x.endswith(".db")
-            ],
-            key=os.path.getmtime,
-            reverse=True,
-        )
-
-        for old in files[14:]:
-            try:
-                os.remove(old)
-            except OSError:
-                pass
-
-        log.info("Database backup created: %s", destination)
-    except Exception:
-        log.exception("Database backup failed")
-
-
-# ============================================================
-# KEYBOARDS
-# ============================================================
-
+        c.execute('''CREATE TABLE IF NOT EXISTS applications(id INTEGER PRIMARY KEY AUTOINCREMENT,created_at TEXT NOT NULL,user_id INTEGER NOT NULL,username TEXT,product TEXT NOT NULL,bank TEXT NOT NULL,client_name TEXT NOT NULL,contact TEXT NOT NULL,manager TEXT NOT NULL,manager_id INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'new',taken_at TEXT,completed_at TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS users(user_id INTEGER PRIMARY KEY,username TEXT,first_seen TEXT NOT NULL)'''); c.commit()
+def now(): return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+def status(s): return {'new':emoji('new','🆕')+' <b>Новая</b>','in_work':emoji('work','🔄')+' <b>В работе</b>','completed':emoji('done','✅')+' <b>Завершена</b>'}.get(s,s)
 def home_kb(uid):
-    rows = [
-        [btn("Дебетовая карта", "debit", "product:debit")],
-        [btn("Кредитная карта", "credit", "product:credit")],
-        [btn("Регистрация бизнеса + РКО", "rko", "product:rko")],
-        [btn("Оставить заявку", "form", "form")],
-    ]
+    r=[[btn('Дебетовая карта','debit','product:debit')],[btn('Кредитная карта','credit','product:credit')],[btn('Регистрация бизнеса + РКО','rko','product:rko')],[btn('Оставить заявку','form','form')]]
+    if uid in ADMIN_IDS:r.append([btn('Админ-панель','admin','admin')])
+    if uid in MANAGERS:r.append([btn('Панель менеджера','manager','manager_panel')])
+    return InlineKeyboardMarkup(r)
+def bank_kb(p): return InlineKeyboardMarkup([[btn(b,'bank',f'bank:{p}:{i}')] for i,b in enumerate(BANKS[p])]+[[btn('Назад','back','home')]])
+def manager_kb(): return InlineKeyboardMarkup([[btn('Эдуард','manager_select','mgr:6045840701')],[btn('Александр','manager_select','mgr:8923153510')],[btn('Назад','back','home')]])
+def form_kb(): return InlineKeyboardMarkup([[btn('Назад','back','home')]])
+def review_kb(): return InlineKeyboardMarkup([[btn('Отправить заявку','send','submit')],[btn('Изменить','edit','edit')],[btn('Отмена','cancel','cancel')]])
+def actions(a,s):
+    r=[]
+    if s=='new':r.append([btn('Взять в работу','work',f'take:{a}')])
+    elif s=='in_work':r.append([btn('Завершить','done',f'complete:{a}')])
+    r.append([btn('Открыть','open',f'view:{a}')]); return InlineKeyboardMarkup(r)
+def admin_kb(): return InlineKeyboardMarkup([[btn('Все заявки','apps_all','apps:all')],[btn('Новые','new','apps:new'),btn('В работе','work','apps:in_work'),btn('Завершённые','done','apps:completed')],[btn('Статистика','stats','stats'),btn('Отчёт','report','report')],[btn('Менеджеры','manager_admin','managers')],[btn('Экспорт CSV','export','export')],[btn('Главное меню','back','home')]])
+def manager_panel():
+    return InlineKeyboardMarkup([
+        [btn('Мои заявки','apps','myapps')],
+        [btn('Новые заявки','new','myapps:new'), btn('В работе','work','myapps:in_work')],
+        [btn('Завершённые','done','myapps:completed')],
+        [btn('Моя статистика','stats','mystats')],
+        [btn('Мой отчёт','report','myreport')],
+        [btn('Мой профиль','manager_admin','myprofile')],
+        [btn('Главное меню','back','home')]
+    ])
 
-    # ВАЖНО:
-    # Эдуард одновременно администратор и менеджер,
-    # поэтому ему показываются обе панели.
-    if uid in ADMIN_IDS:
-        rows.append([btn("Админ-панель", "admin", "admin")])
+def manager_profile(uid):
+    name=MANAGERS.get(uid,'Менеджер')
+    with db() as c:
+        total=c.execute('SELECT COUNT(*) FROM applications WHERE manager_id=?',(uid,)).fetchone()[0]
+        new=c.execute("SELECT COUNT(*) FROM applications WHERE manager_id=? AND status='new'",(uid,)).fetchone()[0]
+        work=c.execute("SELECT COUNT(*) FROM applications WHERE manager_id=? AND status='in_work'",(uid,)).fetchone()[0]
+        done=c.execute("SELECT COUNT(*) FROM applications WHERE manager_id=? AND status='completed'",(uid,)).fetchone()[0]
+    t=(emoji('manager','👤')+f' <b>Профиль менеджера</b>\n\n'
+       f'<b>Имя:</b> {escape(name)}\n'
+       f'<b>Telegram ID:</b> <code>{uid}</code>\n\n'
+       f'{emoji("apps_all","📋")} <b>Всего заявок:</b> {total}\n'
+       f'{emoji("new","🆕")} <b>Новые:</b> {new}\n'
+       f'{emoji("work","🔄")} <b>В работе:</b> {work}\n'
+       f'{emoji("done","✅")} <b>Завершено:</b> {done}')
+    return t
 
-    if uid in MANAGERS:
-        rows.append([btn("Панель менеджера", "manager", "manager_panel")])
-
-    return InlineKeyboardMarkup(rows)
-
-
-def product_kb():
-    return InlineKeyboardMarkup(
-        [
-            [btn("Дебетовая карта", "debit", "product:debit")],
-            [btn("Кредитная карта", "credit", "product:credit")],
-            [btn("Регистрация бизнеса + РКО", "rko", "product:rko")],
-            [btn("Назад", "back", "home")],
-        ]
-    )
-
-
-def bank_kb(product):
-    rows = [
-        [btn(bank, "bank", f"bank:{product}:{i}")]
-        for i, bank in enumerate(BANKS[product])
-    ]
-    rows.append([btn("Назад", "back", "home")])
-    return InlineKeyboardMarkup(rows)
-
-
-def manager_kb():
-    return InlineKeyboardMarkup(
-        [
-            [btn("Эдуард", "manager", "mgr:6045840701")],
-            [btn("Александр", "manager", "mgr:8923153510")],
-            [btn("Назад", "back", "home")],
-        ]
-    )
-
-
-def form_kb():
-    return InlineKeyboardMarkup(
-        [[btn("Назад", "back", "home")]]
-    )
-
-
-def review_kb():
-    return InlineKeyboardMarkup(
-        [
-            [btn("Отправить заявку", "send", "submit")],
-            [btn("Изменить", "edit", "edit")],
-            [btn("Отмена", "cancel", "cancel")],
-        ]
-    )
-
-
-def application_actions(app_id, status_value):
-    rows = []
-
-    if status_value == "new":
-        rows.append(
-            [btn("Взять в работу", "work", f"take:{app_id}")]
-        )
-    elif status_value == "in_work":
-        rows.append(
-            [btn("Завершить", "done", f"complete:{app_id}")]
-        )
-
-    rows.append(
-        [btn("Открыть", "open", f"view:{app_id}")]
-    )
-
-    return InlineKeyboardMarkup(rows)
-
-
-def admin_kb():
-    return InlineKeyboardMarkup(
-        [
-            [btn("Все заявки", "apps", "apps:all")],
-            [
-                btn("Новые", "new", "apps:new"),
-                btn("В работе", "work", "apps:in_work"),
-                btn("Завершённые", "done", "apps:completed"),
-            ],
-            [
-                btn("Статистика", "stats", "stats"),
-                btn("Отчёт", "report", "report"),
-            ],
-            [btn("Менеджеры", "manager", "managers")],
-            [btn("Экспорт CSV", "export", "export")],
-            [btn("Главное меню", "back", "home")],
-        ]
-    )
-
-
-def manager_panel_kb():
-    return InlineKeyboardMarkup(
-        [
-            [btn("Мои заявки", "apps", "myapps")],
-            [btn("Моя статистика", "stats", "mystats")],
-            [btn("Мой отчёт", "report", "myreport")],
-            [btn("Главное меню", "back", "home")],
-        ]
-    )
-
-
-# ============================================================
-# UI
-# ============================================================
-
-async def edit_message(query, text, keyboard):
+async def edit(q,t,k):
     try:
-        await query.edit_message_text(
-            text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard,
-        )
-    except Exception as exc:
-        if "Message is not modified" not in str(exc):
-            raise
+        await q.edit_message_text(t, parse_mode=ParseMode.HTML, reply_markup=k)
+    except Exception as e:
+        msg=str(e)
+        if 'Message is not modified' in msg:
+            return
+        if 'Entity_text_invalid' in msg or "can't parse entities" in msg:
+            await q.edit_message_text(strip_custom_emoji(t), parse_mode=ParseMode.HTML, reply_markup=k)
+            return
+        raise
 
+async def safe_reply(message,text,**kwargs):
+    try:
+        return await message.reply_text(text,**kwargs)
+    except Exception as e:
+        msg=str(e)
+        if 'Entity_text_invalid' in msg or "can't parse entities" in msg:
+            kwargs.pop('parse_mode',None)
+            return await message.reply_text(strip_custom_emoji(text),**kwargs)
+        raise
 
-async def start(update, context):
-    user = update.effective_user
-    context.user_data.clear()
-
+async def safe_send(bot,chat_id,text,**kwargs):
+    try:
+        return await bot.send_message(chat_id,text,**kwargs)
+    except Exception as e:
+        msg=str(e)
+        if 'Entity_text_invalid' in msg or "can't parse entities" in msg:
+            kwargs.pop('parse_mode',None)
+            return await bot.send_message(chat_id,strip_custom_emoji(text),**kwargs)
+        raise
+async def start(update,context):
+    u=update.effective_user; context.user_data.clear()
+    with db() as c:c.execute('INSERT OR REPLACE INTO users(user_id,username,first_seen) VALUES(?,?,COALESCE((SELECT first_seen FROM users WHERE user_id=?),?))',(u.id,u.username or '',u.id,now()));c.commit()
+    t=emoji('welcome','⭐')+' <b>Media Bank</b>\n\nВыберите интересующую вас услугу:'
+    if update.callback_query: await edit(update.callback_query,t,home_kb(u.id))
+    else: await safe_reply(update.message,t,parse_mode=ParseMode.HTML,reply_markup=home_kb(u.id))
+async def stats_text(mid=None):
+    extra=' AND manager_id=?' if mid else ''; a=(mid,) if mid else ()
     with db() as c:
-        c.execute(
-            """
-            INSERT OR REPLACE INTO users(
-                user_id, username, first_seen
-            )
-            VALUES(
-                ?, ?,
-                COALESCE(
-                    (SELECT first_seen FROM users WHERE user_id=?),
-                    ?
-                )
-            )
-            """,
-            (
-                user.id,
-                user.username or "",
-                user.id,
-                now(),
-            ),
-        )
-        c.commit()
-
-    text = (
-        emoji("welcome", "⭐")
-        + " <b>Media Bank</b>\n\n"
-        + "Выберите интересующую вас услугу:"
-    )
-
-    if update.callback_query:
-        await edit_message(
-            update.callback_query,
-            text,
-            home_kb(user.id),
-        )
+        q=lambda x:c.execute('SELECT COUNT(*) FROM applications WHERE '+x+extra,a).fetchone()[0]
+        total=q('1=1'); new=q("status='new'"); work=q("status='in_work'"); done=q("status='completed'"); today=q("substr(created_at,1,10)=date('now')")
+    title=emoji('stats','📊')+' <b>Статистика</b>'+((f' · {escape(MANAGERS[mid])}') if mid else '')
+    return f'{title}\n\n📋 Всего: <b>{total}</b>\n{emoji("new","🆕")} Новых: <b>{new}</b>\n{emoji("work","🔄")} В работе: <b>{work}</b>\n{emoji("done","✅")} Завершено: <b>{done}</b>\nСегодня: <b>{today}</b>'
+async def submit(update,context):
+    d=context.user_data;u=update.effective_user; created=now()
+    with db() as c:
+        cur=c.execute('INSERT INTO applications(created_at,user_id,username,product,bank,client_name,contact,manager,manager_id,status) VALUES(?,?,?,?,?,?,?,?,?,?)',(created,u.id,u.username or '',d['product'],d['bank'],d['client_name'],d['contact'],d['manager'],d['manager_id'],'new'));a=cur.lastrowid;c.commit()
+    t=emoji('new','🆕')+f' <b>Новая заявка #{a}</b>\n\n'+f'{emoji("form","📝")} <b>Продукт:</b> {escape(PRODUCTS[d["product"]])}\n'+f'{emoji("bank","🏦")} <b>Банк:</b> {escape(d["bank"])}\n'+f'{emoji("user","👤")} <b>Имя:</b> {escape(d["client_name"])}\n'+f'{emoji("user","👤")} <b>Telegram:</b> {escape(d["contact"])}\n'+f'{emoji("manager","🤝")} <b>Менеджер:</b> {escape(d["manager"])}\n🆕 <b>Статус:</b> Новая\n<i>{escape(created)}</i>'
+    await safe_send(context.bot,GROUP_ID,t,parse_mode=ParseMode.HTML,reply_markup=actions(a,'new'));context.user_data.clear()
+    await safe_reply(update.effective_message,emoji('done','✅')+' <b>Заявка отправлена!</b>\n\nНомер заявки: <b>#'+str(a)+'</b>\nМенеджер свяжется с вами.',parse_mode=ParseMode.HTML,reply_markup=home_kb(u.id))
+async def text_input(update,context):
+    s=context.user_data.get('step');v=(update.message.text or '').strip()
+    if not s or not v:return
+    if s=='name': context.user_data['client_name']=v;context.user_data['step']='contact';await safe_reply(update.message,emoji('user','👤')+' <b>Введите Telegram клиента:</b>\nНапример: @username',parse_mode=ParseMode.HTML,reply_markup=form_kb())
+    elif s=='contact':context.user_data['contact']=v;context.user_data['step']='manager';await safe_reply(update.message,emoji('manager','🤝')+' <b>Выберите менеджера:</b>',parse_mode=ParseMode.HTML,reply_markup=manager_kb())
+async def view(q,a):
+    with db() as c:r=c.execute('SELECT id,created_at,product,bank,client_name,contact,manager,status FROM applications WHERE id=?',(a,)).fetchone()
+    if not r:await q.answer('Заявка не найдена',show_alert=True);return
+    t=f'{emoji("open","📂")} <b>Заявка #{r[0]}</b>\n\n{emoji("form","📝")} <b>Продукт:</b> {escape(PRODUCTS[r[2]])}\n{emoji("bank","🏦")} <b>Банк:</b> {escape(r[3])}\n{emoji("user","👤")} <b>Имя:</b> {escape(r[4])}\n{emoji("user","👤")} <b>Telegram:</b> {escape(r[5])}\n{emoji("manager","🤝")} <b>Менеджер:</b> {escape(r[6])}\n{status(r[7])}\n\n<b>Создана:</b> {escape(r[1])}'
+    await edit(q,t,actions(r[0],r[7]))
+async def apps(update,context,status_filter='all',mid=None):
+    uid=update.effective_user.id
+    is_admin=uid in ADMIN_IDS
+    if mid is None and not is_admin: mid=uid
+    cnd=[];args=[]
+    if status_filter!='all': cnd.append('status=?');args.append(status_filter)
+    if mid is not None: cnd.append('manager_id=?');args.append(mid)
+    w=(' WHERE '+' AND '.join(cnd)) if cnd else ''
+    with db() as c:
+        rows=c.execute(f'SELECT id,product,bank,client_name,manager,status FROM applications{w} ORDER BY id DESC LIMIT 30',args).fetchall()
+    if is_admin:
+        title='Все заявки' if mid is None else f'Заявки менеджера {escape(MANAGERS.get(mid,""))}'
+        back='admin'
     else:
-        await update.message.reply_text(
-            text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=home_kb(user.id),
-        )
-
-
-def review_text(data):
-    product = data["product"]
-
-    # КЛЮЧЕВОЕ МЕСТО:
-    # продукт выбирает СВОЙ Premium custom emoji ID.
-    product_icon = emoji(product, "•")
-
-    return (
-        emoji("review", "📝")
-        + " <b>Проверьте заявку</b>\n\n"
-        + f"{product_icon} <b>Продукт:</b> "
-        + escape(PRODUCTS[product])
-        + "\n"
-        + f'{emoji("bank", "🏦")} <b>Банк:</b> '
-        + escape(data["bank"])
-        + "\n"
-        + f'{emoji("user", "👤")} <b>Имя:</b> '
-        + escape(data["client_name"])
-        + "\n"
-        + f'{emoji("user", "👤")} <b>Telegram:</b> '
-        + escape(data["contact"])
-        + "\n"
-        + f'{emoji("manager", "🤝")} <b>Менеджер:</b> '
-        + escape(data["manager"])
-    )
-
-
-# ============================================================
-# STATS / REPORTS
-# ============================================================
-
-async def stats_text(manager_id=None):
-    where = ""
-    args = ()
-
-    if manager_id is not None:
-        where = " AND manager_id=?"
-        args = (manager_id,)
-
-    with db() as c:
-        def count(condition):
-            return c.execute(
-                "SELECT COUNT(*) FROM applications "
-                "WHERE " + condition + where,
-                args,
-            ).fetchone()[0]
-
-        total = count("1=1")
-        new_count = count("status='new'")
-        work_count = count("status='in_work'")
-        done_count = count("status='completed'")
-
-        # Счётчик "Сегодня" оставлен отдельным и не меняется.
-        today_count = count(
-            "date(created_at)=date('now')"
-        )
-
-    title = emoji("stats", "📊") + " <b>Статистика</b>"
-
-    if manager_id is not None:
-        title += f" · {escape(MANAGERS.get(manager_id, 'Менеджер'))}"
-
-    return (
-        f"{title}\n\n"
-        f"📋 Всего: <b>{total}</b>\n"
-        f'{emoji("new", "🆕")} Новых: <b>{new_count}</b>\n'
-        f'{emoji("work", "🔄")} В работе: <b>{work_count}</b>\n'
-        f'{emoji("done", "✅")} Завершено: <b>{done_count}</b>\n'
-        f"Сегодня: <b>{today_count}</b>"
-    )
-
-
-async def send_report(bot, manager_id=None, destination=None):
-    destination = destination or REPORT_CHAT_ID
-
-    where = 'created_at >= datetime("now","-7 day")'
-    args = []
-
-    if manager_id is not None:
-        where += " AND manager_id=?"
-        args.append(manager_id)
-
-    with db() as c:
-        rows = c.execute(
-            f"""
-            SELECT manager, COUNT(*),
-                   SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END)
-            FROM applications
-            WHERE {where}
-            GROUP BY manager
-            ORDER BY manager
-            """,
-            args,
-        ).fetchall()
-
-    title = emoji("report", "📈") + " <b>Отчёт Media Bank за 7 дней</b>\n\n"
-
-    if rows:
-        body = "".join(
-            f"• <b>{escape(row[0])}</b>: "
-            f"{row[1]} заявок, "
-            f"{row[2] or 0} завершено\n"
-            for row in rows
-        )
-    else:
-        body = "Заявок за период нет."
-
-    await bot.send_message(
-        destination,
-        title + body,
-        parse_mode=ParseMode.HTML,
-    )
-
-
-# ============================================================
-# APPLICATION SUBMISSION
-# ============================================================
-
-async def submit_application(update, context):
-    data = context.user_data
-    user = update.effective_user
-    created = now()
-
-    with db() as c:
-        cur = c.execute(
-            """
-            INSERT INTO applications(
-                created_at,
-                user_id,
-                username,
-                product,
-                bank,
-                client_name,
-                contact,
-                manager,
-                manager_id,
-                status
-            )
-            VALUES(?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                created,
-                user.id,
-                user.username or "",
-                data["product"],
-                data["bank"],
-                data["client_name"],
-                data["contact"],
-                data["manager"],
-                data["manager_id"],
-                "new",
-            ),
-        )
-
-        application_id = cur.lastrowid
-        c.commit()
-
-    group_text = (
-        emoji("new", "🆕")
-        + f" <b>Новая заявка #{application_id}</b>\n\n"
-        + f'{emoji("review", "📝")} <b>Продукт:</b> '
-        + escape(PRODUCTS[data["product"]])
-        + "\n"
-        + f'{emoji("bank", "🏦")} <b>Банк:</b> '
-        + escape(data["bank"])
-        + "\n"
-        + f'{emoji("user", "👤")} <b>Имя:</b> '
-        + escape(data["client_name"])
-        + "\n"
-        + f'{emoji("user", "👤")} <b>Telegram:</b> '
-        + escape(data["contact"])
-        + "\n"
-        + f'{emoji("manager", "🤝")} <b>Менеджер:</b> '
-        + escape(data["manager"])
-        + "\n"
-        + f'{emoji("new", "🆕")} <b>Статус:</b> Новая\n'
-        + f"<i>{escape(created)}</i>"
-    )
-
-    await context.bot.send_message(
-        GROUP_ID,
-        group_text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=application_actions(
-            application_id,
-            "new",
-        ),
-    )
-
-    context.user_data.clear()
-
-    await update.effective_message.reply_text(
-        emoji("done", "✅")
-        + " <b>Заявка отправлена!</b>\n\n"
-        + f"Номер заявки: <b>#{application_id}</b>\n"
-        + "Менеджер свяжется с вами.",
-        parse_mode=ParseMode.HTML,
-        reply_markup=home_kb(user.id),
-    )
-
-
-# ============================================================
-# USER FORM
-# ============================================================
-
-async def text_input(update, context):
-    step = context.user_data.get("step")
-    value = (update.message.text or "").strip()
-
-    if not step or not value:
-        return
-
-    if step == "name":
-        context.user_data["client_name"] = value
-        context.user_data["step"] = "contact"
-
-        await update.message.reply_text(
-            emoji("user", "👤")
-            + " <b>Введите Telegram клиента:</b>\n"
-            + "Например: @username",
-            parse_mode=ParseMode.HTML,
-            reply_markup=form_kb(),
-        )
-
-    elif step == "contact":
-        context.user_data["contact"] = value
-        context.user_data["step"] = "manager"
-
-        await update.message.reply_text(
-            emoji("manager", "🤝")
-            + " <b>Выберите менеджера:</b>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=manager_kb(),
-        )
-
-
-# ============================================================
-# APPLICATION LIST / VIEW
-# ============================================================
-
-async def applications_list(
-    update,
-    context,
-    status_filter="all",
-    manager_id=None,
-):
-    user_id = update.effective_user.id
-
-    if manager_id is None and user_id not in ADMIN_IDS:
-        manager_id = user_id
-
-    conditions = []
-    args = []
-
-    if status_filter != "all":
-        conditions.append("status=?")
-        args.append(status_filter)
-
-    if manager_id is not None:
-        conditions.append("manager_id=?")
-        args.append(manager_id)
-
-    where = ""
-    if conditions:
-        where = " WHERE " + " AND ".join(conditions)
-
-    with db() as c:
-        rows = c.execute(
-            f"""
-            SELECT id, product, bank, client_name, manager, status
-            FROM applications
-            {where}
-            ORDER BY id DESC
-            LIMIT 30
-            """,
-            args,
-        ).fetchall()
-
-    back_callback = (
-        "admin"
-        if user_id in ADMIN_IDS
-        else "manager_panel"
-    )
-
-    keyboard = [
-        [
-            btn(
-                f"Открыть #{row[0]}",
-                "open",
-                f"view:{row[0]}",
-            )
-        ]
-        for row in rows
-    ]
-
-    keyboard.append(
-        [btn("Назад", "back", back_callback)]
-    )
-
-    if rows:
-        body = "\n\n".join(
-            f"<b>#{row[0]}</b> · {escape(row[3])}\n"
-            f"{escape(PRODUCTS.get(row[1], row[1]))} · "
-            f"{escape(row[2])}\n"
-            f"{escape(row[4])} · {escape(row[5])}"
-            for row in rows
-        )
-    else:
-        body = "Заявок пока нет."
-
-    text = (
-        emoji("apps", "📋")
-        + " <b>Заявки</b>\n\n"
-        + body
-    )
-
-    markup = InlineKeyboardMarkup(keyboard)
-
-    if update.callback_query:
-        await edit_message(
-            update.callback_query,
-            text,
-            markup,
-        )
-    else:
-        await update.message.reply_text(
-            text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=markup,
-        )
-
-
-async def view_application(query, application_id):
-    with db() as c:
-        row = c.execute(
-            """
-            SELECT
-                id,
-                created_at,
-                product,
-                bank,
-                client_name,
-                contact,
-                manager,
-                status
-            FROM applications
-            WHERE id=?
-            """,
-            (application_id,),
-        ).fetchone()
-
-    if not row:
-        await query.answer(
-            "Заявка не найдена",
-            show_alert=True,
-        )
-        return
-
-    text = (
-        emoji("open", "📂")
-        + f" <b>Заявка #{row[0]}</b>\n\n"
-        + f'{emoji("review", "📝")} <b>Продукт:</b> '
-        + escape(PRODUCTS.get(row[2], row[2]))
-        + "\n"
-        + f'{emoji("bank", "🏦")} <b>Банк:</b> '
-        + escape(row[3])
-        + "\n"
-        + f'{emoji("user", "👤")} <b>Имя:</b> '
-        + escape(row[4])
-        + "\n"
-        + f'{emoji("user", "👤")} <b>Telegram:</b> '
-        + escape(row[5])
-        + "\n"
-        + f'{emoji("manager", "🤝")} <b>Менеджер:</b> '
-        + escape(row[6])
-        + "\n\n"
-        + f"<b>Статус:</b> {escape(row[7])}\n"
-        + f"<b>Создана:</b> {escape(row[1])}"
-    )
-
-    await edit_message(
-        query,
-        text,
-        application_actions(
-            row[0],
-            row[7],
-        ),
-    )
-
-
-# ============================================================
-# CSV
-# ============================================================
-
-async def export_csv(update, context):
-    if update.effective_user.id not in ADMIN_IDS:
-        return
-
-    with db() as c:
-        rows = c.execute(
-            """
-            SELECT
-                id,
-                created_at,
-                product,
-                bank,
-                client_name,
-                contact,
-                manager,
-                status
-            FROM applications
-            ORDER BY id DESC
-            """
-        ).fetchall()
-
-    stream = io.StringIO()
-    writer = csv.writer(stream)
-
-    writer.writerow(
-        [
-            "ID",
-            "Created",
-            "Product",
-            "Bank",
-            "Client",
-            "Telegram",
-            "Manager",
-            "Status",
-        ]
-    )
-
-    writer.writerows(rows)
-
-    document = io.BytesIO(
-        stream.getvalue().encode("utf-8-sig")
-    )
-    document.name = "media_bank_applications.csv"
-
-    await update.effective_message.reply_document(
-        document,
-        caption="Экспорт заявок Media Bank",
-    )
-
-
-# ============================================================
-# CALLBACK ROUTER
-# ============================================================
-
-async def callback(update, context):
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data
-    user = query.from_user
-
-    if data == "home":
-        return await start(update, context)
-
-    if data == "form":
-        context.user_data.clear()
-
-        return await edit_message(
-            query,
-            emoji("review", "📝")
-            + " <b>Выберите продукт:</b>",
-            product_kb(),
-        )
-
-    if data.startswith("product:"):
-        product = data.split(":", 1)[1]
-
-        if product not in PRODUCTS:
-            return
-
-        context.user_data["product"] = product
-
-        return await edit_message(
-            query,
-            emoji(product, "•")
-            + f" <b>{escape(PRODUCTS[product])}</b>\n\n"
-            + "Выберите банк:",
-            bank_kb(product),
-        )
-
-    if data.startswith("bank:"):
-        _, product, index = data.split(":", 2)
-
-        if product not in BANKS:
-            return
-
-        try:
-            bank = BANKS[product][int(index)]
-        except (ValueError, IndexError):
-            return
-
-        context.user_data.update(
-            {
-                "product": product,
-                "bank": bank,
-                "step": "name",
-            }
-        )
-
-        return await edit_message(
-            query,
-            emoji("user", "👤")
-            + " <b>Введите имя клиента:</b>",
-            form_kb(),
-        )
-
-    if data == "edit":
-        context.user_data["step"] = "name"
-
-        return await edit_message(
-            query,
-            emoji("user", "👤")
-            + " <b>Введите имя клиента заново:</b>",
-            form_kb(),
-        )
-
-    if data == "cancel":
-        context.user_data.clear()
-        return await start(update, context)
-
-    if data.startswith("mgr:"):
-        manager_id = int(data.split(":", 1)[1])
-
-        if manager_id not in MANAGERS:
-            return
-
-        context.user_data.update(
-            {
-                "manager_id": manager_id,
-                "manager": MANAGERS[manager_id],
-                "step": "review",
-            }
-        )
-
-        return await edit_message(
-            query,
-            review_text(context.user_data),
-            review_kb(),
-        )
-
-    if data == "submit":
-        return await submit_application(
-            update,
-            context,
-        )
-
-    # ---------------- ADMIN ----------------
-
-    if data == "admin" and user.id in ADMIN_IDS:
-        return await edit_message(
-            query,
-            emoji("admin", "⚙️")
-            + " <b>Админ-панель</b>",
-            admin_kb(),
-        )
-
-    if data == "stats" and user.id in ADMIN_IDS:
-        return await edit_message(
-            query,
-            await stats_text(),
-            admin_kb(),
-        )
-
-    if data == "report" and user.id in ADMIN_IDS:
-        await send_report(context.bot)
-        return await query.answer(
-            "Отчёт отправлен",
-            show_alert=True,
-        )
-
-    if data == "managers" and user.id in ADMIN_IDS:
-        keyboard = [
-            [
-                btn(
-                    manager_name,
-                    "manager",
-                    f"mstats:{manager_id}",
-                )
-            ]
-            for manager_id, manager_name in MANAGERS.items()
-        ]
-
-        keyboard.append(
-            [btn("Назад", "back", "admin")]
-        )
-
-        return await edit_message(
-            query,
-            emoji("manager", "🤝")
-            + " <b>Менеджеры</b>",
-            InlineKeyboardMarkup(keyboard),
-        )
-
-    if data.startswith("mstats:") and user.id in ADMIN_IDS:
-        manager_id = int(data.split(":", 1)[1])
-
-        return await edit_message(
-            query,
-            await stats_text(manager_id),
-            InlineKeyboardMarkup(
-                [[btn("Назад", "back", "managers")]]
-            ),
-        )
-
-    if data == "export" and user.id in ADMIN_IDS:
-        return await export_csv(update, context)
-
-    # ---------------- MANAGER ----------------
-
-    if data == "manager_panel" and user.id in MANAGERS:
-        return await edit_message(
-            query,
-            emoji("manager", "🤝")
-            + " <b>Панель менеджера</b>",
-            manager_panel_kb(),
-        )
-
-    if data == "mystats" and user.id in MANAGERS:
-        return await edit_message(
-            query,
-            await stats_text(user.id),
-            manager_panel_kb(),
-        )
-
-    if data == "myreport" and user.id in MANAGERS:
-        await send_report(
-            context.bot,
-            manager_id=user.id,
-        )
-
-        return await query.answer(
-            "Ваш отчёт отправлен",
-            show_alert=True,
-        )
-
-    if data == "myapps" and user.id in MANAGERS:
-        return await applications_list(
-            update,
-            context,
-            "all",
-            user.id,
-        )
-
-    # ---------------- APPLICATIONS ----------------
-
-    if data.startswith("apps:"):
-        status_filter = data.split(":", 1)[1]
-
-        if user.id not in ADMIN_IDS and user.id not in MANAGERS:
-            return
-
-        return await applications_list(
-            update,
-            context,
-            status_filter,
-        )
-
-    if data.startswith("view:"):
-        return await view_application(
-            query,
-            int(data.split(":", 1)[1]),
-        )
-
-    if data.startswith("take:") and user.id in MANAGERS:
-        application_id = int(data.split(":", 1)[1])
-
+        title='Мои заявки'
+        back='manager_panel'
+    buttons=[]
+    for r in rows:
+        buttons.append([btn(f'Открыть #{r[0]}','open',f'view:{r[0]}')])
+    if not is_admin:
+        buttons.extend([
+            [btn('Все мои','apps_all','myapps'), btn('Новые','new','myapps:new')],
+            [btn('В работе','work','myapps:in_work'), btn('Завершённые','done','myapps:completed')],
+        ])
+    buttons.append([btn('Назад','back',back)])
+    t=emoji('apps_all','📋')+f' <b>{title}</b>\n\n'+('\n\n'.join(f'<b>#{r[0]}</b> · {escape(r[3])}\n{escape(PRODUCTS[r[1]])} · {escape(r[2])}\n{escape(r[4])} · {escape(r[5])}' for r in rows) if rows else 'Заявок пока нет.')
+    await edit(update.callback_query,t,InlineKeyboardMarkup(buttons))
+async def report(bot,mid=None):
+    q='SELECT manager,COUNT(*),SUM(status="completed") FROM applications WHERE created_at>=datetime("now","-7 day")'+(' AND manager_id=?' if mid else '')+' GROUP BY manager';args=(mid,) if mid else ()
+    with db() as c:r=c.execute(q,args).fetchall()
+    t=emoji('report','📈')+' <b>Отчёт Media Bank за 7 дней</b>\n\n'+(''.join(f'• {escape(x[0])}: {x[1]} заявок, {x[2] or 0} завершено\n' for x in r) if r else 'Заявок за период нет.')
+    await safe_send(bot,REPORT_CHAT_ID,t,parse_mode=ParseMode.HTML)
+async def export_csv(update,context):
+    if update.effective_user.id not in ADMIN_IDS:return
+    with db() as c:r=c.execute('SELECT id,created_at,product,bank,client_name,contact,manager,status FROM applications ORDER BY id DESC').fetchall()
+    s=io.StringIO();w=csv.writer(s);w.writerow(['ID','Created','Product','Bank','Client','Telegram','Manager','Status']);w.writerows(r);f=io.BytesIO(s.getvalue().encode('utf-8-sig'));f.name='media_bank_applications.csv';await update.effective_message.reply_document(f,caption='Экспорт заявок Media Bank')
+async def callback(update,context):
+    q=update.callback_query;await q.answer();d=q.data;u=q.from_user
+    if d=='home':return await start(update,context)
+    if d=='form':
+        context.user_data.clear();await edit(q,emoji('form','📝')+' <b>Выберите продукт:</b>',InlineKeyboardMarkup([[btn('Дебетовая карта','debit','product:debit')],[btn('Кредитная карта','credit','product:credit')],[btn('Регистрация бизнеса + РКО','rko','product:rko')],[btn('Назад','back','home')]]));return
+    if d.startswith('product:'):
+        p=d.split(':')[1];context.user_data['product']=p;await edit(q,emoji(p,'•')+f' <b>{PRODUCTS[p]}</b>\n\nВыберите банк:',bank_kb(p));return
+    if d.startswith('banks:'):
+        p=d.split(':')[1];context.user_data['product']=p;await edit(q,emoji('bank','🏦')+' <b>Выберите банк:</b>',bank_kb(p));return
+    if d.startswith('bank:'):
+        _,p,i=d.split(':');context.user_data.update(product=p,bank=BANKS[p][int(i)],step='name');await edit(q,emoji('user','👤')+' <b>Введите имя клиента:</b>',form_kb());return
+    if d=='edit':context.user_data['step']='name';await edit(q,emoji('edit','✏️')+' <b>Введите имя клиента заново:</b>',form_kb());return
+    if d=='cancel':context.user_data.clear();return await start(update,context)
+    if d.startswith('mgr:'):
+        m=int(d.split(':')[1]);context.user_data.update(manager_id=m,manager=MANAGERS[m],step='review');x=context.user_data;t=review_emoji('title','📝')+' <b>Проверьте заявку</b>\n\n'+f'{review_emoji("product_debit" if x["product"]=="debit" else "product_credit" if x["product"]=="credit" else "product_rko","💳" if x["product"]=="debit" else "💰" if x["product"]=="credit" else "🏢")} <b>Продукт:</b> {escape(PRODUCTS[x["product"]])}\n{review_emoji("bank","🏦")} <b>Банк:</b> {escape(x["bank"])}\n{review_emoji("client","👤")} <b>Имя:</b> {escape(x["client_name"])}\n{review_emoji("client","👤")} <b>Telegram:</b> {escape(x["contact"])}\n{review_emoji("manager","🤝")} <b>Менеджер:</b> {escape(x["manager"])}';await edit(q,t,review_kb());return
+    if d=='submit':return await submit(update,context)
+    if d=='admin' and u.id in ADMIN_IDS:return await edit(q,emoji('admin','⚙️')+' <b>Админ-панель</b>',admin_kb())
+    if d=='manager_panel' and u.id in MANAGERS:return await edit(q,emoji('manager','🤝')+' <b>Панель менеджера</b>',manager_panel())
+    if d.startswith('apps:'):return await apps(update,context,d.split(':')[1])
+    if d=='myapps':return await apps(update,context,'all',u.id)
+    if d.startswith('myapps:'):return await apps(update,context,d.split(':',1)[1],u.id)
+    if d=='stats' and u.id in ADMIN_IDS:return await edit(q,await stats_text(),admin_kb())
+    if d=='mystats':return await edit(q,await stats_text(u.id),manager_panel())
+    if d=='report' and u.id in ADMIN_IDS:await report(context.bot);return await q.answer('Отчёт отправлен',show_alert=True)
+    if d=='myreport':
+        await report(context.bot,u.id)
+        return await q.answer('Ваш отчёт отправлен',show_alert=True)
+    if d=='myprofile' and u.id in MANAGERS:
+        return await edit(q,manager_profile(u.id),InlineKeyboardMarkup([[btn('Назад','back','manager_panel')]]))
+    if d=='export':return await export_csv(update,context)
+    if d=='managers' and u.id in ADMIN_IDS:
+        return await edit(q,emoji('manager_admin','🤝')+' <b>Менеджеры</b>',InlineKeyboardMarkup([[btn(n,'manager_select',f'mstats:{m}')] for m,n in MANAGERS.items()]+[[btn('Назад','back','admin')]]))
+    if d.startswith('mstats:'):return await edit(q,await stats_text(int(d.split(':')[1])),InlineKeyboardMarkup([[btn('Назад','back','managers')]]))
+    if d.startswith('view:'):return await view(q,int(d.split(':')[1]))
+    if d.startswith('take:') and u.id in MANAGERS:
+        a=int(d.split(':')[1]);
         with db() as c:
-            c.execute(
-                """
-                UPDATE applications
-                SET status='in_work',
-                    taken_at=?
-                WHERE id=?
-                  AND status='new'
-                """,
-                (now(), application_id),
-            )
-            c.commit()
-
-        return await view_application(
-            query,
-            application_id,
-        )
-
-    if data.startswith("complete:") and user.id in MANAGERS:
-        application_id = int(data.split(":", 1)[1])
-
+            cur=c.execute("UPDATE applications SET status='in_work',taken_at=? WHERE id=? AND manager_id=? AND status='new'",(now(),a,u.id));c.commit()
+        if cur.rowcount==0:
+            return await q.answer('Эта заявка не назначена вам или уже взята в работу.',show_alert=True)
+        return await view(q,a)
+    if d.startswith('complete:') and u.id in MANAGERS:
+        a=int(d.split(':')[1]);
         with db() as c:
-            c.execute(
-                """
-                UPDATE applications
-                SET status='completed',
-                    completed_at=?
-                WHERE id=?
-                  AND manager_id=?
-                """,
-                (
-                    now(),
-                    application_id,
-                    user.id,
-                ),
-            )
-            c.commit()
+            cur=c.execute("UPDATE applications SET status='completed',completed_at=? WHERE id=? AND manager_id=? AND status='in_work'",(now(),a,u.id));c.commit()
+        if cur.rowcount==0:
+            return await q.answer('Заявка не находится в вашей работе.',show_alert=True)
+        return await view(q,a)
+async def stats_cmd(update,context):
+    u=update.effective_user
+    if u.id in ADMIN_IDS:await safe_reply(update.message,await stats_text(),parse_mode=ParseMode.HTML,reply_markup=admin_kb())
+    elif u.id in MANAGERS:await safe_reply(update.message,await stats_text(u.id),parse_mode=ParseMode.HTML,reply_markup=manager_panel())
+async def report_cmd(update,context):
+    if update.effective_user.id in ADMIN_IDS:await report(context.bot);await update.message.reply_text('Отчёт отправлен в рабочую группу.')
+def backup_database():
+    """Create a consistent SQLite backup in a sibling backups folder."""
+    if not os.path.exists(DB_FILE):
+        return None
+    backup_dir=os.path.join(os.path.dirname(os.path.abspath(DB_FILE)), 'backups')
+    os.makedirs(backup_dir, exist_ok=True)
+    stamp=datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_UTC')
+    target=os.path.join(backup_dir, f'media_bank_{stamp}.db')
+    with sqlite3.connect(DB_FILE) as source, sqlite3.connect(target) as dest:
+        source.backup(dest)
+    # Keep the 14 most recent backups to limit disk usage.
+    backups=sorted((os.path.join(backup_dir,n) for n in os.listdir(backup_dir) if n.endswith('.db')), key=os.path.getmtime, reverse=True)
+    for old in backups[14:]:
+        try: os.remove(old)
+        except OSError: log.warning('Could not remove old backup: %s', old)
+    log.info('Database backup created: %s', target)
+    return target
 
-        return await view_application(
-            query,
-            application_id,
-        )
-
-
-# ============================================================
-# COMMANDS
-# ============================================================
-
-async def stats_command(update, context):
-    user = update.effective_user
-
-    if user.id in ADMIN_IDS:
-        await update.message.reply_text(
-            await stats_text(),
-            parse_mode=ParseMode.HTML,
-            reply_markup=admin_kb(),
-        )
-    elif user.id in MANAGERS:
-        await update.message.reply_text(
-            await stats_text(user.id),
-            parse_mode=ParseMode.HTML,
-            reply_markup=manager_panel_kb(),
-        )
-
-
-async def report_command(update, context):
-    if update.effective_user.id not in ADMIN_IDS:
-        return
-
-    await send_report(context.bot)
-
-    await update.message.reply_text(
-        "Отчёт отправлен в рабочую группу."
-    )
-
-
-# ============================================================
-# SCHEDULE
-# ============================================================
-
-async def scheduled_jobs(context):
-    current = datetime.now(timezone.utc)
-
-    if (
-        current.hour == DAILY_REPORT_HOUR
-        and current.minute == DAILY_REPORT_MINUTE
-    ):
-        await send_report(context.bot)
-
-    if (
-        current.weekday() == WEEKLY_REPORT_DAY
-        and current.hour == WEEKLY_REPORT_HOUR
-        and current.minute == WEEKLY_REPORT_MINUTE
-    ):
-        await send_report(context.bot)
-
-    # Резервная копия БД раз в сутки.
-    if current.hour == 3 and current.minute == 0:
+async def scheduled_backup(context):
+    try:
         backup_database()
+    except Exception:
+        log.exception('Scheduled database backup failed')
 
-
-# ============================================================
-# TELEGRAM SETUP
-# ============================================================
-
-async def post_init(application):
-    await application.bot.set_my_commands(
-        [
-            BotCommand("start", "Главное меню"),
-            BotCommand("stats", "Статистика"),
-            BotCommand("report", "Отчёт"),
-        ]
-    )
-
-    await application.bot.set_chat_menu_button(
-        menu_button=MenuButtonCommands()
-    )
-
-    log.info(
-        "Premium button icons: %s",
-        ENABLE_BUTTON_PREMIUM,
-    )
-
-    log.info(
-        "Premium review IDs: review=%s debit=%s credit=%s rko=%s bank=%s",
-        EMOJI["review"],
-        EMOJI["debit"],
-        EMOJI["credit"],
-        EMOJI["rko"],
-        EMOJI["bank"],
-    )
-
-
-# ============================================================
-# MAIN
-# ============================================================
-
+async def scheduled(context):
+    d=datetime.now(timezone.utc)
+    if d.hour==DAILY_REPORT_HOUR and d.minute==DAILY_REPORT_MINUTE:await report(context.bot)
+    if d.weekday()==WEEKLY_REPORT_DAY and d.hour==WEEKLY_REPORT_HOUR and d.minute==WEEKLY_REPORT_MINUTE:await report(context.bot)
+async def setup(app):
+    await app.bot.set_my_commands([BotCommand('start','Главное меню'),BotCommand('stats','Статистика'),BotCommand('report','Отчёт')]);await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 def main():
-    if not BOT_TOKEN:
-        raise RuntimeError(
-            "BOT_TOKEN is missing in environment"
-        )
-
-    if not GROUP_ID:
-        raise RuntimeError(
-            "GROUP_ID is missing in environment"
-        )
-
-    init_db()
-    backup_database()
-
-    application = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .post_init(post_init)
-        .build()
-    )
-
-    application.add_handler(
-        CommandHandler("start", start)
-    )
-    application.add_handler(
-        CommandHandler("stats", stats_command)
-    )
-    application.add_handler(
-        CommandHandler("report", report_command)
-    )
-    application.add_handler(
-        CallbackQueryHandler(callback)
-    )
-    application.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            text_input,
-        )
-    )
-
-    if application.job_queue:
-        application.job_queue.run_repeating(
-            scheduled_jobs,
-            interval=60,
-            first=10,
-        )
-
-    print("======================================")
-    print("MEDIA BANK — CLEAN REBUILD")
-    print("DB:", DB_FILE)
-    print("Premium button icons:", ENABLE_BUTTON_PREMIUM)
-    print("Managers:", MANAGERS)
-    print("Admin IDs:", ADMIN_IDS)
-    print("======================================")
-
-    application.run_polling(
-        drop_pending_updates=True
-    )
-
-
-if __name__ == "__main__":
-    main()
+    if not BOT_TOKEN:raise RuntimeError('BOT_TOKEN is missing in .env')
+    if not GROUP_ID:raise RuntimeError('GROUP_ID is missing in .env')
+    init_db();app=Application.builder().token(BOT_TOKEN).post_init(setup).build();app.add_handler(CommandHandler('start',start));app.add_handler(CommandHandler('stats',stats_cmd));app.add_handler(CommandHandler('report',report_cmd));app.add_handler(CallbackQueryHandler(callback));app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,text_input));
+    if app.job_queue:
+        app.job_queue.run_repeating(scheduled,interval=60,first=10)
+        app.job_queue.run_daily(scheduled_backup,time=__import__('datetime').time(hour=3,minute=15,tzinfo=timezone.utc),name='database_backup')
+    print('MEDIA BANK — CLEAN FROM ZERO / FIXED HTML + PREMIUM');print('DB:',DB_FILE);print('Daily SQLite backups: 14 retained');print('Premium message emoji: enabled');print('Premium button icons:',ENABLE_BUTTON_PREMIUM);app.run_polling(drop_pending_updates=True)
+if __name__=='__main__':main()
