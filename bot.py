@@ -139,7 +139,7 @@ async def stats_text(mid=None):
     extra=' AND manager_id=?' if mid else ''; a=(mid,) if mid else ()
     with db() as c:
         q=lambda x:c.execute('SELECT COUNT(*) FROM applications WHERE '+x+extra,a).fetchone()[0]
-        total=q('1=1'); new=q("status='new'"); work=q("status='in_work'"); done=q("status='completed'"); today=q("date(created_at)=date('now')")
+        total=q('1=1'); new=q("status='new'"); work=q("status='in_work'"); done=q("status='completed'"); today=q("substr(created_at,1,10)=date('now')")
     title=emoji('stats','📊')+' <b>Статистика</b>'+((f' · {escape(MANAGERS[mid])}') if mid else '')
     return f'{title}\n\n📋 Всего: <b>{total}</b>\n{emoji("new","🆕")} Новых: <b>{new}</b>\n{emoji("work","🔄")} В работе: <b>{work}</b>\n{emoji("done","✅")} Завершено: <b>{done}</b>\nСегодня: <b>{today}</b>'
 async def submit(update,context):
